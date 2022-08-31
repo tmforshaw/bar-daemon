@@ -1,8 +1,10 @@
+use crate::battery;
+use crate::memory;
 use crate::brightness;
 use crate::error;
 use crate::volume;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 
 pub async fn start() -> Result<(), Box<dyn std::error::Error>> {
@@ -34,14 +36,17 @@ pub async fn start() -> Result<(), Box<dyn std::error::Error>> {
                 match message.as_str() {
                     "volume" => println!("{}", volume::get_json()),
                     "brightness" => println!("{}", brightness::get_json()),
+                    "battery" => println!("{}", battery::get_json()),
+                    "memory" => println!("{}", memory::get_json())
+                    "all" => println!(
+                        "{{\"volume\": {}, \"brightness\": {}, \"battery\": {}, \"memory\": {}}}",
+                        volume::get_json(),
+                        brightness::get_json(),
+                        battery::get_json(),
+                        memory::get_json()
+                    ),
                     _ => println!("{message}"),
                 };
-
-                // Write the data back
-                if let Err(e) = socket.write_all(&buf[0..n]).await {
-                    eprintln!("failed to write to socket; err = {:?}", e);
-                    return;
-                }
             }
         });
     }

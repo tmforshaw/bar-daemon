@@ -1,5 +1,7 @@
+mod battery;
 mod brightness;
 pub mod command;
+mod memory;
 mod sender;
 mod server;
 mod volume;
