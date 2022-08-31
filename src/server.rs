@@ -1,7 +1,7 @@
 use crate::battery;
-use crate::memory;
 use crate::brightness;
 use crate::error;
+use crate::memory;
 use crate::volume;
 
 use tokio::io::AsyncReadExt;
@@ -37,7 +37,7 @@ pub async fn start() -> Result<(), Box<dyn std::error::Error>> {
                     "volume" => println!("{}", volume::get_json()),
                     "brightness" => println!("{}", brightness::get_json()),
                     "battery" => println!("{}", battery::get_json()),
-                    "memory" => println!("{}", memory::get_json())
+                    "memory" => println!("{}", memory::get_json()),
                     "all" => println!(
                         "{{\"volume\": {}, \"brightness\": {}, \"battery\": {}, \"memory\": {}}}",
                         volume::get_json(),
