@@ -1,14 +1,14 @@
-use crate::command::run_command;
+use crate::command;
 use crate::error;
 
-fn get_percent(volume_command: &String) -> String {
+fn get_percent(volume_command: &str) -> String {
     match volume_command.split('/').nth(1) {
         Some(percentage) => percentage.trim().trim_end_matches('%').to_string(),
         None => error!("Couldn't parse volume from volume command"),
     }
 }
 
-fn get_decibel(volume_command: &String) -> String {
+fn get_decibel(volume_command: &str) -> String {
     match volume_command.split('/').nth(2) {
         Some(decibel_section) => match decibel_section.trim().split(',').next() {
             Some(decibel) => decibel.trim_end_matches(" dB").trim().to_string(),
@@ -19,7 +19,7 @@ fn get_decibel(volume_command: &String) -> String {
 }
 
 pub fn get_json() -> String {
-    let volume_command = run_command("pactl", &["get-sink-volume", "@DEFAULT_SINK@"]);
+    let volume_command = command::run("pactl", &["get-sink-volume", "@DEFAULT_SINK@"]);
 
     format!(
         "{{\"percent\": {}, \"decibel\": \"{}\"}}",

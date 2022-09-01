@@ -1,7 +1,7 @@
-use crate::command::run_command;
+use crate::command;
 use crate::error;
 
-fn get_percent(battery_command: &String) -> String {
+fn get_percent(battery_command: &str) -> String {
     match battery_command.split_whitespace().nth(3) {
         Some(percentage) => percentage.trim().trim_end_matches("%,").to_string(),
         None => error!("Couldn't parse battery from battery command"),
@@ -17,7 +17,7 @@ enum BatteryState {
 
 const BAT_STATES: [&str; 3] = ["Fully charged", "Charging", "Discharging"];
 
-fn get_time(battery_command: &String) -> String {
+fn get_time(battery_command: &str) -> String {
     match battery_command.split_whitespace().nth(4) {
         Some(time) => time.trim().replace(':', " "),
         None => {
@@ -32,7 +32,7 @@ fn get_time(battery_command: &String) -> String {
     }
 }
 
-fn get_state(battery_command: &String) -> BatteryState {
+fn get_state(battery_command: &str) -> BatteryState {
     match battery_command.split_whitespace().nth(2) {
         Some(state) => match state.trim_end_matches(',') {
             "Full" => BatteryState::FullyCharged,
@@ -45,7 +45,7 @@ fn get_state(battery_command: &String) -> BatteryState {
 }
 
 pub fn get_json() -> String {
-    let battery_command = run_command("acpi", &["-b"]);
+    let battery_command = command::run("acpi", &["-b"]);
 
     format!(
         "{{\"percent\": {}, \"time\": \"{}\", \"state\": \"{}\"}}",

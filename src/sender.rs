@@ -8,7 +8,7 @@ pub async fn start(args: &Vec<String>) -> Result<(), Box<dyn Error>> {
     // Connect to a peer
     let mut stream = TcpStream::connect("127.0.0.1:8080").await?;
 
-    if args.len() == 0 {
+    if args.is_empty() {
         error!("No input to send");
     } else {
         // Write some data.

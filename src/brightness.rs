@@ -1,7 +1,7 @@
-use crate::command::run_command;
+use crate::command;
 use crate::error;
 
-fn get_percent(percentage_unfiltered: &String) -> String {
+fn get_percent(percentage_unfiltered: &str) -> String {
     percentage_unfiltered
         .trim()
         .trim_start_matches('(')
@@ -9,11 +9,11 @@ fn get_percent(percentage_unfiltered: &String) -> String {
         .to_string()
 }
 
-fn get_value(value_unfiltered: &String) -> String {
+fn get_value(value_unfiltered: &str) -> String {
     value_unfiltered.trim().to_string()
 }
 
-fn get_current_brightness_line(brightness_command: &String) -> Vec<String> {
+fn get_current_brightness_line(brightness_command: &str) -> Vec<String> {
     match brightness_command.split('\n').nth(1) {
         Some(line) => line
             .trim()
@@ -25,7 +25,7 @@ fn get_current_brightness_line(brightness_command: &String) -> Vec<String> {
 }
 
 pub fn get_json() -> String {
-    let brightness_command = run_command("brightnessctl", &["i"]);
+    let brightness_command = command::run("brightnessctl", &["i"]);
 
     let current_brightness_info = get_current_brightness_line(&brightness_command);
 
