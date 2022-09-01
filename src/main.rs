@@ -21,15 +21,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         server::start().await
     } else {
         match args[1].as_str() {
-            "send" => {
+            "get" | "update" => {
                 // Allow sending of messages
-                sender::start(&args.split_off(2)).await
+                sender::start(&args[1].clone(), &args.split_off(2)).await
             }
             "daemon" => {
                 // Attempt to open the server
                 server::start().await
             }
-            _ => error!("Please enter 'send' or 'daemon'"),
+            _ => error!("Please enter 'get', 'update', or 'daemon'"),
         }
     }
 }

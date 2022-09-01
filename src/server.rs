@@ -1,24 +1,24 @@
-use crate::battery;
-use crate::brightness;
+use crate::battery::Battery;
+use crate::brightness::Brightness;
 use crate::error;
-use crate::memory;
-use crate::volume;
+use crate::memory::Memory;
+use crate::volume::Volume;
 
-use std::time::Duration;
+// use std::time::Duration;
 
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 pub async fn start() -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("127.0.0.1:8080").await?;
 
-    tokio::spawn(async move {
-        loop {
-            println!("{}", get_all_json());
+    // tokio::spawn(async move {
+    //     loop {
+    //         println!("{}", get_all_json());
 
-            std::thread::sleep(Duration::from_millis(1500));
-        }
-    });
+    //         std::thread::sleep(Duration::from_millis(1500));
+    //     }
+    // });
 
     loop {
         let (mut socket, _) = listener.accept().await?;
@@ -26,14 +26,13 @@ pub async fn start() -> Result<(), Box<dyn std::error::Error>> {
         tokio::spawn(async move {
             let mut buf = [0; 1024];
 
-            // In a loop, read data from the socket and write the data back.
             loop {
                 let n = match socket.read(&mut buf).await {
                     // socket closed
                     Ok(n) if n == 0 => return,
                     Ok(n) => n,
                     Err(e) => {
-                        eprintln!("failed to read from socket; err = {:?}", e);
+                        eprintln!("Failed to read from socket: {e}");
                         return;
                     }
                 };
@@ -43,14 +42,30 @@ pub async fn start() -> Result<(), Box<dyn std::error::Error>> {
                     Err(e) => error!("Could not parse incoming string: {e}"),
                 };
 
-                match message.as_str() {
-                    "volume" => println!("{}", volume::get_json()),
-                    "brightness" => println!("{}", brightness::get_json()),
-                    "battery" => println!("{}", battery::get_json()),
-                    "memory" => println!("{}", memory::get_json()),
-                    "all" => println!("{}", get_all_json()),
-                    _ => {}
+                let args: Vec<&str> = message.split_whitespace().collect();
+
+                let parseable_args = &args[1..args.len()];
+
+                let reply = match args.first() {
+                    Some(argument) => match *argument {
+                        "volume" | "vol" => Some(Volume::parse_args(parseable_args)),
+                        "brightness" | "bri" => Some(Brightness::parse_args(parseable_args)),
+                        "battery" | "bat" => Some(Battery::parse_args(parseable_args)),
+                        "memory" | "mem" => Some(Memory::parse_args(parseable_args)),
+                        "update" => {
+                            println!("{}", get_all_json());
+                            None
+                        }
+                        incorrect => Some(format!("'{incorrect}' is not a valid argument")),
+                    },
+                    None => Some("Please enter an argument to get".to_string()),
                 };
+
+                if let Some(r) = reply {
+                    if let Some(e) = socket.write_all(r.as_bytes()).await.err() {
+                        eprintln!("Could not send to socket: {e}");
+                    }
+                }
             }
         });
     }
@@ -59,9 +74,9 @@ pub async fn start() -> Result<(), Box<dyn std::error::Error>> {
 fn get_all_json() -> String {
     format!(
         "{{\"volume\": {}, \"brightness\": {}, \"battery\": {}, \"memory\": {}}}",
-        volume::get_json(),
-        brightness::get_json(),
-        battery::get_json(),
-        memory::get_json()
+        Volume::get_json(),
+        Brightness::get_json(),
+        Battery::get_json(),
+        Memory::get_json()
     )
 }
