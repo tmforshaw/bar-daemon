@@ -4,21 +4,21 @@ use crate::error;
 use crate::memory::Memory;
 use crate::volume::Volume;
 
-// use std::time::Duration;
-
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 pub async fn start() -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("127.0.0.1:8080").await?;
 
-    // tokio::spawn(async move {
-    //     loop {
-    //         println!("{}", get_all_json());
+    tokio::spawn(async move {
+        use std::time::Duration;
 
-    //         std::thread::sleep(Duration::from_millis(1500));
-    //     }
-    // });
+        loop {
+            println!("{}", get_all_json());
+
+            std::thread::sleep(Duration::from_millis(1500));
+        }
+    });
 
     loop {
         let (mut socket, _) = listener.accept().await?;

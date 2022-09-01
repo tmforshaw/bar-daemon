@@ -12,7 +12,6 @@ pub async fn start(command: &String, args: &Vec<String>) -> Result<(), Box<dyn E
         if args.is_empty() {
             error!("Nothing to get: please enter arguments");
         } else {
-            // Write some data.
             stream.write_all(args.join(" ").as_bytes()).await?;
 
             let mut buf = [0; 1024];
@@ -21,8 +20,8 @@ pub async fn start(command: &String, args: &Vec<String>) -> Result<(), Box<dyn E
                 Ok(n) if n == 0 => std::process::exit(0x1000),
                 Ok(n) => n,
                 Err(e) => {
-                    eprintln!("failed to read from socket; err = {:?}", e);
-                    std::process::exit(0x1000);
+                    eprintln!("Failed to read from socket: {e}");
+                    return Err(Box::from(e));
                 }
             };
 
@@ -30,7 +29,7 @@ pub async fn start(command: &String, args: &Vec<String>) -> Result<(), Box<dyn E
                 Ok(string) => string,
                 Err(e) => {
                     eprintln!("Could not parse message to string: {e}");
-                    std::process::exit(0x1000);
+                    return Err(Box::from(e));
                 }
             };
 
