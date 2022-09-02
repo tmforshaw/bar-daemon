@@ -72,16 +72,3 @@ pub fn run(command_name: &str, args: &[&str]) -> Result<String, ServerError> {
         }),
     }
 }
-// #[must_use]
-// pub fn run2(command_name: &str, args: &[&str]) -> Result<String, String> {
-//     match Command::new(command_name).args(args).output() {
-//         Ok(out) => match String::from_utf8(out.clone().stdout) {
-//             Ok(out_string) => Ok(out_string.trim().to_string()),
-//             Err(e) => Err(format!("Failed to convert '{out:#?}' to string: {e}")),
-//         },
-//         Err(e) => Err(format!(
-//             "Failed to run '{command_name} {}' {e}",
-//             args.join(" ")
-//         )),
-//     }
-// }

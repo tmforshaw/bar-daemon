@@ -14,14 +14,9 @@ async fn socket_function(
     buf: &mut [u8],
 ) -> Result<(), Arc<ServerError>> {
     let n = match socket.read(buf).await {
-        // socket closed
-        Ok(n) if n == 0 => {
-            return Err(Arc::from(ServerError::SocketDisconnect));
-        }
+        Ok(n) if n == 0 => return Err(Arc::from(ServerError::SocketDisconnect)),
         Ok(n) => n,
-        Err(e) => {
-            return Err(Arc::from(ServerError::SocketRead { e }));
-        }
+        Err(e) => return Err(Arc::from(ServerError::SocketRead { e })),
     };
 
     let message = match String::from_utf8(Vec::from(&buf[0..n])) {
@@ -67,7 +62,7 @@ async fn socket_function(
                         .iter()
                         .map(std::string::ToString::to_string)
                         .collect(),
-                }));
+                }))
             }
         },
         None => return Err(Arc::from(ServerError::EmptyArguments)),
@@ -119,11 +114,6 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
                 //     eprintln!("Could not write errors to socket: {write_e}");
                 // }
             }
-
-            // if let Err(e) =  {
-            // }
-
-            // return;
         })
         .await
         {

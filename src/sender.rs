@@ -5,13 +5,12 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 pub async fn start(command: &String, args: &Vec<String>) -> Result<(), Arc<ServerError>> {
-    // Connect to a peer
     let mut stream = match TcpStream::connect("127.0.0.1:8080").await {
         Ok(stream) => stream,
         Err(e) => return Err(Arc::from(ServerError::SocketConnect { e })),
     };
 
-    if command == "get" {
+    let result = if command == "get" {
         if args.is_empty() {
             eprintln!("Nothing to get: please enter arguments");
             Err(Arc::from(ServerError::EmptyArguments))
@@ -52,5 +51,11 @@ pub async fn start(command: &String, args: &Vec<String>) -> Result<(), Arc<Serve
         }
 
         Ok(())
+    };
+
+    if let Err(e) = result.clone() {
+        eprintln!("{e}");
     }
+
+    result
 }
