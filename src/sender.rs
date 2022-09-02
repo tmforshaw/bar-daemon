@@ -1,18 +1,24 @@
-use crate::error;
+use crate::command::ServerError;
+use std::sync::Arc;
 
-use std::error::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
-pub async fn start(command: &String, args: &Vec<String>) -> Result<(), Box<dyn Error>> {
+pub async fn start(command: &String, args: &Vec<String>) -> Result<(), Arc<ServerError>> {
     // Connect to a peer
-    let mut stream = TcpStream::connect("127.0.0.1:8080").await?;
+    let mut stream = match TcpStream::connect("127.0.0.1:8080").await {
+        Ok(stream) => stream,
+        Err(e) => return Err(Arc::from(ServerError::SocketConnect { e })),
+    };
 
     if command == "get" {
         if args.is_empty() {
-            error!("Nothing to get: please enter arguments");
+            eprintln!("Nothing to get: please enter arguments");
+            Err(Arc::from(ServerError::EmptyArguments))
         } else {
-            stream.write_all(args.join(" ").as_bytes()).await?;
+            if let Err(e) = stream.write_all(args.join(" ").as_bytes()).await {
+                return Err(Arc::from(ServerError::SocketWrite { e }));
+            }
 
             let mut buf = [0; 1024];
 
@@ -21,7 +27,7 @@ pub async fn start(command: &String, args: &Vec<String>) -> Result<(), Box<dyn E
                 Ok(n) => n,
                 Err(e) => {
                     eprintln!("Failed to read from socket: {e}");
-                    return Err(Box::from(e));
+                    return Err(Arc::from(ServerError::SocketRead { e }));
                 }
             };
 
@@ -29,7 +35,10 @@ pub async fn start(command: &String, args: &Vec<String>) -> Result<(), Box<dyn E
                 Ok(string) => string,
                 Err(e) => {
                     eprintln!("Could not parse message to string: {e}");
-                    return Err(Box::from(e));
+                    return Err(Arc::from(ServerError::StringConversion {
+                        debug_string: format!("{:?}", &buf[0..n]),
+                        e,
+                    }));
                 }
             };
 
@@ -38,7 +47,9 @@ pub async fn start(command: &String, args: &Vec<String>) -> Result<(), Box<dyn E
             Ok(())
         }
     } else {
-        stream.write_all(b"update").await?;
+        if let Err(e) = stream.write_all(b"update").await {
+            return Err(Arc::from(ServerError::SocketWrite { e }));
+        }
 
         Ok(())
     }

@@ -1,78 +1,127 @@
-use crate::command;
-use crate::error;
+// use crate::command;
 
-#[derive(PartialEq, Eq, Debug)]
-enum BatteryState {
-    FullyCharged,
-    Charging,
-    Discharging,
-}
+// #[derive(PartialEq, Eq, Debug)]
+// enum BatteryState {
+//     FullyCharged,
+//     Charging,
+//     Discharging,
+// }
 
-const BAT_STATES: [&str; 3] = ["Fully charged", "Charging", "Discharging"];
+// const BAT_STATES: [&str; 3] = ["Fully charged", "Charging", "Discharging"];
 
-pub struct Battery {}
+// pub struct Battery {}
 
-impl Battery {
-    fn get() -> String {
-        command::run("acpi", &["-b"])
-    }
+// impl Battery {
+//     fn get() -> Option<String> {
+//         match command::run("acpi", &["-b"]) {
+//             Ok(output) => Some(output),
+//             Err(e) => {
+//                 eprintln!("{e}");
+//                 None
+//             }
+//         }
+//     }
 
-    fn get_percent(battery_command: &str) -> u32 {
-        match battery_command.split_whitespace().nth(3) {
-            Some(percentage) => match percentage.trim().trim_end_matches("%,").parse() {
-                Ok(integer) => integer,
-                Err(e) => error!("Could not parse battery into integer: {e}"),
-            },
-            None => error!("Couldn't parse battery from battery command"),
-        }
-    }
+//     fn get_percent(battery_command: &str) -> Option<u32> {
+//         match battery_command.split_whitespace().nth(3) {
+//             Some(percentage) => match percentage.trim().trim_end_matches("%,").parse() {
+//                 Ok(integer) => Some(integer),
+//                 Err(e) => {
+//                     eprintln!("Could not parse battery into integer: {e}");
+//                     None
+//                 }
+//             },
+//             None => {
+//                 eprintln!("Couldn't parse battery from battery command");
+//                 None
+//             }
+//         }
+//     }
 
-    fn get_time(battery_command: &str) -> String {
-        match battery_command.split_whitespace().nth(4) {
-            Some(time) => time.trim().replace(':', " "),
-            None => {
-                let state = Self::get_state(battery_command);
+//     fn get_time(battery_command: &str) -> Option<String> {
+//         match battery_command.split_whitespace().nth(4) {
+//             Some(time) => Some(time.trim().replace(':', " ")),
+//             None => {
+//                 let state = if let Some(s) = Self::get_state(battery_command) {
+//                     s
+//                 } else {
+//                     return None;
+//                 };
 
-                if state == BatteryState::FullyCharged {
-                    String::from(BAT_STATES[BatteryState::FullyCharged as usize])
-                } else {
-                    error!("Could not parse battery time");
-                }
-            }
-        }
-    }
+//                 if state == BatteryState::FullyCharged {
+//                     Some(String::from(
+//                         BAT_STATES[BatteryState::FullyCharged as usize],
+//                     ))
+//                 } else {
+//                     eprintln!("Could not parse battery time");
+//                     None
+//                 }
+//             }
+//         }
+//     }
 
-    fn get_state(battery_command: &str) -> BatteryState {
-        match battery_command.split_whitespace().nth(2) {
-            Some(state) => match state.trim_end_matches(',') {
-                "Full" => BatteryState::FullyCharged,
-                "Charging" => BatteryState::Charging,
-                "Discharging" => BatteryState::Discharging,
-                _ => error!("Battery state '{state}' unknown"),
-            },
-            None => error!("Could not parse battery state"),
-        }
-    }
+//     fn get_state(battery_command: &str) -> Option<BatteryState> {
+//         match battery_command.split_whitespace().nth(2) {
+//             Some(state) => match state.trim_end_matches(',') {
+//                 "Full" => Some(BatteryState::FullyCharged),
+//                 "Charging" => Some(BatteryState::Charging),
+//                 "Discharging" => Some(BatteryState::Discharging),
+//                 incorrect => {
+//                     eprintln!("Battery state '{incorrect}' unknown");
+//                     None
+//                 }
+//             },
+//             None => {
+//                 eprintln!("Could not parse battery state");
+//                 None
+//             }
+//         }
+//     }
 
-    pub fn get_json() -> String {
-        let battery_command = Self::get();
+//     pub fn get_json() -> Option<String> {
+//         let battery_command = match Self::get() {
+//             Some(output) => output,
+//             None => return None,
+//         };
 
-        format!(
-            "{{\"percent\": {}, \"time\": \"{}\", \"state\": \"{}\"}}",
-            Self::get_percent(&battery_command),
-            Self::get_time(&battery_command),
-            BAT_STATES[Self::get_state(&battery_command) as usize]
-        )
-    }
+//         let percent = match Self::get_percent(&battery_command) {
+//             Some(percent) => percent,
+//             None => return None,
+//         };
 
-    pub fn parse_args(args: &[&str]) -> String {
-        let battery_command = Self::get();
+//         let time = match Self::get_time(&battery_command) {
+//             Some(time) => time,
+//             None => return None,
+//         };
 
-        match args[0] {
-            "percent" | "per" | "p" => Self::get_percent(&battery_command).to_string(),
-            "time" | "t" => Self::get_time(&battery_command),
-            "state" | "s" => BAT_STATES[Self::get_state(&battery_command) as usize].to_string(),
-            incorrect => format!("'{incorrect}' is not a valid argument"),
-        }
-    }
-}
+//         let state = match Self::get_state(&battery_command) {
+//             Some(state) => state,
+//             None => return None,
+//         };
+
+//         Some(format!(
+//             "{{\"percent\": {}, \"time\": \"{}\", \"state\": \"{}\"}}",
+//             percent, time, BAT_STATES[state as usize]
+//         ))
+//     }
+
+//     pub fn parse_args(args: &[&str]) -> Option<String> {
+//         let battery_command = match Self::get() {
+//             Some(output) => output,
+//             None => return None,
+//         };
+
+//         match args[0] {
+//             "percent" | "per" | "p" => match Self::get_percent(&battery_command) {
+//                 Some(percent) => Some(percent.to_string()),
+//                 None => None,
+//             },
+//             "time" | "t" => Self::get_time(&battery_command),
+//             "state" | "s" => match Self::get_state(&battery_command) {
+//                 Some(state) => Some(BAT_STATES[state as usize].to_string()),
+//                 None => None,
+//             },
+//             incorrect => Some(format!("'{incorrect}' is not a valid argument")),
+//         }
+//     }
+// }

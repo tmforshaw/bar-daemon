@@ -11,12 +11,14 @@ mod sender;
 mod server;
 mod volume;
 
+use command::ServerError;
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), std::sync::Arc<ServerError>> {
     let mut args = std::env::args().collect::<Vec<String>>();
 
     // No arguments entered
-    if args.len() <= 1 {
+    let result = if args.len() <= 1 {
         // Attempt to open the server
         server::start().await
     } else {
@@ -29,7 +31,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Attempt to open the server
                 server::start().await
             }
-            _ => error!("Please enter 'get', 'update', or 'daemon'"),
+            incorrect => Err(std::sync::Arc::from(ServerError::IncorrectArgument {
+                incorrect: incorrect.to_string(),
+                valid: vec!["get", "update", "daemon"]
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect(),
+            })),
         }
+    };
+
+    if let Err(e) = result {
+        eprintln!("{e}");
     }
+
+    Ok(())
 }
