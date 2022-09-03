@@ -83,20 +83,20 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
         Err(e) => return Err(Arc::from(ServerError::AddressInUse { e })),
     };
 
-    // tokio::spawn(async move {
-    //     use std::time::Duration;
+    tokio::spawn(async move {
+        use std::time::Duration;
 
-    //     loop {
-    //         match get_all_json() {
-    //             Ok(json) => {
-    //                 println!("{json}");
-    //             }
-    //             Err(e) => eprintln!("{e}"),
-    //         };
+        loop {
+            match get_all_json() {
+                Ok(json) => {
+                    println!("{json}");
+                }
+                Err(e) => eprintln!("{e}"),
+            };
 
-    //         std::thread::sleep(Duration::from_millis(1500));
-    //     }
-    // });
+            std::thread::sleep(Duration::from_millis(1500));
+        }
+    });
 
     loop {
         let mut socket = match listener.accept().await {
