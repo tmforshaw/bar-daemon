@@ -1,7 +1,7 @@
-// use crate::battery::Battery;
+use crate::battery::Battery;
 use crate::brightness::Brightness;
 use crate::command::ServerError;
-// use crate::memory::Memory;
+use crate::memory::Memory;
 use crate::volume::Volume;
 
 use std::sync::Arc;
@@ -46,8 +46,14 @@ async fn socket_function(
                 Ok(bri) => Some(bri),
                 Err(e) => return Err(Arc::from(e)),
             },
-            // "battery" | "bat" => Ok(Battery::parse_args(parseable_args)),
-            // "memory" | "mem" => Ok(Memory::parse_args(parseable_args)),
+            "battery" | "bat" => match Battery::parse_args(&parseable_args) {
+                Ok(bat) => Some(bat),
+                Err(e) => return Err(Arc::from(e)),
+            },
+            "memory" | "mem" => match Memory::parse_args(&parseable_args) {
+                Ok(mem) => Some(mem),
+                Err(e) => return Err(Arc::from(e)),
+            },
             "update" => match get_all_json() {
                 Ok(json) => {
                     println!("{json}");
@@ -133,21 +139,18 @@ fn get_all_json() -> Result<String, Box<ServerError>> {
         Err(e) => return Err(e),
     };
 
-    // let battery = match Battery::get_json() {
-    //     Ok(bat) => bat,
-    //     Err(e) => return Err(e),
-    // };
+    let battery = match Battery::get_json() {
+        Ok(bat) => bat,
+        Err(e) => return Err(e),
+    };
 
-    // let memory = match Memory::get_json() {
-    //     Ok(mem) => mem,
-    //     Err(e) => return Err(e),
-    // };
+    let memory = match Memory::get_json() {
+        Ok(mem) => mem,
+        Err(e) => return Err(e),
+    };
 
     Ok(format!(
-        "{{\"volume\": {}, \"brightness\": {}}}", // , \"battery\": {}, \"memory\": {}
-        volume,
-        brightness,
-        // Battery::get_json(),
-        // Memory::get_json()
+        "{{\"volume\": {}, \"brightness\": {}, \"battery\": {}, \"memory\": {}}}",
+        volume, brightness, battery, memory
     ))
 }

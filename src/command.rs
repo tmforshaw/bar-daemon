@@ -51,6 +51,8 @@ pub enum ServerError {
     SocketConnect { e: std::io::Error },
     #[error("Socket disconnected")]
     SocketDisconnect,
+    #[error("Unknown value '{incorrect}' found for '{object}'")]
+    UnknownValue { incorrect: String, object: String },
 }
 
 /// # Errors
