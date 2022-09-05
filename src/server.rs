@@ -16,7 +16,7 @@ async fn socket_function(
     vol_mutex: Arc<Mutex<Vec<(String, String)>>>,
     bri_mutex: Arc<Mutex<Vec<(String, String)>>>,
     bat_mutex: Arc<Mutex<Vec<(String, String)>>>,
-    ram_mutex: Arc<Mutex<Vec<(String, String)>>>,
+    mem_mutex: Arc<Mutex<Vec<(String, String)>>>,
 ) -> Result<(), Arc<ServerError>> {
     let n = match socket.read(buf).await {
         Ok(n) if n == 0 => return Err(Arc::from(ServerError::SocketDisconnect)),
@@ -39,78 +39,84 @@ async fn socket_function(
         .map(std::string::ToString::to_string)
         .collect::<Vec<String>>();
 
-    let parseable_args = args.split_off(2);
-
     let reply = match args.get(0) {
         Some(command) => match command.as_str() {
-            "get" => match args.get(1) {
-                Some(argument) => match argument.as_str() {
-                    "volume" | "vol" => {
-                        let lock = vol_mutex.lock().await;
+            "get" => {
+                let parseable_args = if args.len() > 2 {
+                    args.split_off(2)
+                } else {
+                    return Err(Arc::from(ServerError::EmptyArguments));
+                };
 
-                        Some(Volume::parse_args(&lock.clone(), &parseable_args)?)
-                    }
-                    "brightness" | "bri" => {
-                        let lock = bri_mutex.lock().await;
+                match args.get(1) {
+                    Some(argument) => match argument.as_str() {
+                        "volume" | "vol" => {
+                            let lock = vol_mutex.lock().await;
 
-                        Some(Brightness::parse_args(&lock.clone(), &parseable_args)?)
-                    }
-                    "battery" | "bat" => {
-                        let lock = bat_mutex.lock().await;
+                            Some(Volume::parse_args(&lock.clone(), &parseable_args)?)
+                        }
+                        "brightness" | "bri" => {
+                            let lock = bri_mutex.lock().await;
 
-                        Some(Battery::parse_args(&lock.clone(), &parseable_args)?)
-                    }
-                    "memory" | "mem" => Some(Memory::parse_args(&parseable_args)?),
-                    incorrect => {
-                        return Err(Arc::from(ServerError::IncorrectArgument {
-                            incorrect: incorrect.to_string(),
-                            valid: vec!["volume", "brightness", "battery", "memory"]
-                                .iter()
-                                .map(std::string::ToString::to_string)
-                                .collect(),
-                        }))
-                    }
-                },
-                None => return Err(Arc::from(ServerError::EmptyArguments)),
-            },
-            "update" => match args.get(1) {
-                Some(argument) => match argument.as_str() {
-                    "volume" | "vol" => {
-                        let vol = Volume::get_json_tuple()?;
+                            Some(Brightness::parse_args(&lock.clone(), &parseable_args)?)
+                        }
+                        "battery" | "bat" => {
+                            let lock = bat_mutex.lock().await;
 
-                        let mut lock = vol_mutex.lock().await;
-                        *lock = vol.clone();
+                            Some(Battery::parse_args(&lock.clone(), &parseable_args)?)
+                        }
+                        "memory" | "mem" => {
+                            let lock = mem_mutex.lock().await;
+                            Some(Memory::parse_args(&lock.clone(), &parseable_args)?)
+                        }
+                        incorrect => {
+                            return Err(Arc::from(ServerError::IncorrectArgument {
+                                incorrect: incorrect.to_string(),
+                                valid: vec!["volume", "brightness", "battery", "memory"]
+                                    .iter()
+                                    .map(std::string::ToString::to_string)
+                                    .collect(),
+                            }))
+                        }
+                    },
+                    None => return Err(Arc::from(ServerError::EmptyArguments)),
+                }
+            }
+            "update" => {
+                match args.get(1) {
+                    Some(argument) => match argument.as_str() {
+                        "volume" | "vol" => {
+                            let vol = Volume::get_json_tuple()?;
 
-                        println!("{:?}", *lock);
+                            let mut lock = vol_mutex.lock().await;
+                            *lock = vol.clone();
+                        }
+                        "brightness" | "bri" => {
+                            let bri = Brightness::get_json_tuple()?;
 
-                        None
-                    }
-                    "brightness" | "bri" => {
-                        let bri = Brightness::get_json_tuple()?;
+                            let mut lock = bri_mutex.lock().await;
+                            *lock = bri.clone();
+                        }
+                        incorrect => {
+                            return Err(Arc::from(ServerError::IncorrectArgument {
+                                incorrect: incorrect.to_string(),
+                                valid: vec!["volume", "brightness"]
+                                    .iter()
+                                    .map(std::string::ToString::to_string)
+                                    .collect(),
+                            }))
+                        }
+                    },
+                    None => {}
+                };
 
-                        let mut lock = bri_mutex.lock().await;
-                        *lock = bri.clone();
+                println!(
+                    "{}",
+                    get_all_json(vol_mutex, bri_mutex, bat_mutex, mem_mutex).await?
+                );
 
-                        None
-                    }
-                    incorrect => {
-                        return Err(Arc::from(ServerError::IncorrectArgument {
-                            incorrect: incorrect.to_string(),
-                            valid: vec!["volume", "brightness"]
-                                .iter()
-                                .map(std::string::ToString::to_string)
-                                .collect(),
-                        }))
-                    }
-                },
-                None => match get_all_json() {
-                    Ok(json) => {
-                        println!("{json}");
-                        None
-                    }
-                    Err(e) => return Err(Arc::from(e)),
-                },
-            },
+                None
+            }
             incorrect => {
                 return Err(Arc::from(ServerError::IncorrectArgument {
                     incorrect: incorrect.to_string(),
@@ -155,16 +161,16 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
     // });
 
     let vol_mutex: Arc<Mutex<Vec<(String, String)>>> =
-        Arc::new(Mutex::new(Volume::get_json_tuple().unwrap()));
+        Arc::new(Mutex::new(Volume::get_json_tuple()?));
 
     let bri_mutex: Arc<Mutex<Vec<(String, String)>>> =
-        Arc::new(Mutex::new(Brightness::get_json_tuple().unwrap()));
+        Arc::new(Mutex::new(Brightness::get_json_tuple()?));
 
     let bat_mutex: Arc<Mutex<Vec<(String, String)>>> =
-        Arc::new(Mutex::new(Battery::get_json_tuple().unwrap()));
+        Arc::new(Mutex::new(Battery::get_json_tuple()?));
 
-    let ram_mutex: Arc<Mutex<Vec<(String, String)>>> =
-        Arc::new(Mutex::new(Brightness::get_json_tuple().unwrap()));
+    let mem_mutex: Arc<Mutex<Vec<(String, String)>>> =
+        Arc::new(Mutex::new(Memory::get_json_tuple()?));
 
     loop {
         let mut socket = match listener.accept().await {
@@ -175,7 +181,7 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
         let clone_vol_mutex = vol_mutex.clone();
         let clone_bri_mutex = bri_mutex.clone();
         let clone_bat_mutex = bat_mutex.clone();
-        let clone_ram_mutex = ram_mutex.clone();
+        let clone_mem_mutex = mem_mutex.clone();
 
         if let Err(join_error) = tokio::spawn(async move {
             let mut buf = [0; 1024];
@@ -186,7 +192,7 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
                 clone_vol_mutex,
                 clone_bri_mutex,
                 clone_bat_mutex,
-                clone_ram_mutex,
+                clone_mem_mutex,
             )
             .await
             {
@@ -204,29 +210,32 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
     }
 }
 
-fn get_all_json() -> Result<String, Box<ServerError>> {
-    let volume = match Volume::get_json() {
-        Ok(vol) => vol,
-        Err(e) => return Err(e),
-    };
+fn get_json_from_tuple(vec_tup: &Vec<(String, String)>) -> String {
+    let joined_string = vec_tup
+        .iter()
+        .map(|t| format!("\"{}\": \"{}\"", t.0, t.1))
+        .collect::<Vec<String>>()
+        .join(", ");
 
-    let brightness = match Brightness::get_json() {
-        Ok(bri) => bri,
-        Err(e) => return Err(e),
-    };
+    format!("{{{}}}", joined_string)
+}
 
-    let battery = match Battery::get_json() {
-        Ok(bat) => bat,
-        Err(e) => return Err(e),
-    };
-
-    let memory = match Memory::get_json() {
-        Ok(mem) => mem,
-        Err(e) => return Err(e),
-    };
+async fn get_all_json(
+    vol_mutex: Arc<Mutex<Vec<(String, String)>>>,
+    bri_mutex: Arc<Mutex<Vec<(String, String)>>>,
+    bat_mutex: Arc<Mutex<Vec<(String, String)>>>,
+    mem_mutex: Arc<Mutex<Vec<(String, String)>>>,
+) -> Result<String, Box<ServerError>> {
+    let volume_tup = vol_mutex.lock().await.clone();
+    let brightness_tup = bri_mutex.lock().await.clone();
+    let battery_tup = bat_mutex.lock().await.clone();
+    let memory_tup = mem_mutex.lock().await.clone();
 
     Ok(format!(
         "{{\"volume\": {}, \"brightness\": {}, \"battery\": {}, \"memory\": {}}}",
-        volume, brightness, battery, memory
+        get_json_from_tuple(&volume_tup),
+        get_json_from_tuple(&brightness_tup),
+        get_json_from_tuple(&battery_tup),
+        get_json_from_tuple(&memory_tup),
     ))
 }

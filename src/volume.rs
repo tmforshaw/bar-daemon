@@ -5,10 +5,10 @@ pub struct Volume {}
 
 impl Volume {
     fn get() -> Result<String, Box<ServerError>> {
-        match command::run("pactl", &["get-sink-volume", "@DEFAULT_SINK@"]) {
-            Ok(output) => Ok(output),
-            Err(e) => Err(Box::from(e)),
-        }
+        Ok(command::run(
+            "pactl",
+            &["get-sink-volume", "@DEFAULT_SINK@"],
+        )?)
     }
 
     fn get_percent(volume_command: &str) -> Result<u32, Box<ServerError>> {
@@ -49,15 +49,6 @@ impl Volume {
                 output: volume_command.to_string(),
             })),
         }
-    }
-
-    pub fn get_json() -> Result<String, Box<ServerError>> {
-        let vec_tup = Self::get_json_tuple()?;
-
-        Ok(format!(
-            "{{\"{}\": \"{}\", \"{}\": \"{}\"}}",
-            vec_tup[0].0, vec_tup[0].1, vec_tup[1].0, vec_tup[1].1
-        ))
     }
 
     pub fn get_json_tuple() -> Result<Vec<(String, String)>, Box<ServerError>> {

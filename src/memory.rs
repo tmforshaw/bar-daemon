@@ -5,10 +5,7 @@ pub struct Memory {}
 
 impl Memory {
     fn get() -> Result<String, Box<ServerError>> {
-        match command::run("free", &["-b"]) {
-            Ok(output) => Ok(output),
-            Err(e) => Err(Box::from(e)),
-        }
+        Ok(command::run("free", &["-b"])?)
     }
 
     fn get_used_bytes(memory_command: &str) -> Result<f32, Box<ServerError>> {
@@ -58,67 +55,40 @@ impl Memory {
     }
 
     fn get_used_percent(memory_command: &str) -> Result<f32, Box<ServerError>> {
-        let used_bytes = match Self::get_used_bytes(memory_command) {
-            Ok(ub) => ub,
-            Err(e) => return Err(e),
-        };
-
-        let available_bytes = match Self::get_available_bytes(memory_command) {
-            Ok(ab) => ab,
-            Err(e) => return Err(e),
-        };
+        let used_bytes = Self::get_used_bytes(memory_command)?;
+        let available_bytes = Self::get_available_bytes(memory_command)?;
 
         Ok((used_bytes / available_bytes) * 100f32)
     }
 
-    pub fn get_json() -> Result<String, Box<ServerError>> {
-        let memory_command = match Self::get() {
-            Ok(output) => output,
-            Err(e) => return Err(e),
-        };
+    pub fn get_json_tuple() -> Result<Vec<(String, String)>, Box<ServerError>> {
+        let memory_command = Self::get()?;
+        let used_bytes = Self::get_used_bytes(&memory_command)?;
+        let used_percent = Self::get_used_percent(&memory_command)?;
 
-        let used_bytes = match Self::get_used_bytes(&memory_command) {
-            Ok(ub) => ub,
-            Err(e) => return Err(e),
-        };
-
-        let used_percent = match Self::get_used_percent(&memory_command) {
-            Ok(up) => up,
-            Err(e) => return Err(e),
-        };
-
-        Ok(format!(
-            "{{\"used_bytes\": {}, \"used_percent\": \"{}\"}}",
-            used_bytes, used_percent,
-        ))
+        Ok(vec![
+            ("used_bytes".to_string(), used_bytes.to_string()),
+            ("used_percent".to_string(), used_percent.to_string()),
+        ])
     }
 
-    pub fn parse_args(args: &[String]) -> Result<String, Box<ServerError>> {
-        let memory_command = match Self::get() {
-            Ok(output) => output,
-            Err(e) => return Err(e),
-        };
-
-        let used_bytes = match Self::get_used_bytes(&memory_command) {
-            Ok(ub) => ub,
-            Err(e) => return Err(e),
-        };
-
-        let used_percent = match Self::get_used_percent(&memory_command) {
-            Ok(up) => up,
-            Err(e) => return Err(e),
-        };
-
-        match args[0].as_str() {
-            "used_bytes" | "used_b" | "ub" => Ok(used_bytes.to_string()),
-            "used_percent" | "used_p" | "up" => Ok(used_percent.to_string()),
-            incorrect => Err(Box::from(ServerError::IncorrectArgument {
-                incorrect: incorrect.to_string(),
-                valid: ["used_bytes", "used_percent"]
-                    .iter()
-                    .map(std::string::ToString::to_string)
-                    .collect(),
-            })),
+    pub fn parse_args(
+        vec_tup: &Vec<(String, String)>,
+        args: &[String],
+    ) -> Result<String, Box<ServerError>> {
+        match args.get(0) {
+            Some(argument) => match argument.as_str() {
+                "used_bytes" | "used_b" | "ub" => Ok(vec_tup[0].1.clone()),
+                "used_percent" | "used_p" | "up" => Ok(vec_tup[1].1.clone()),
+                incorrect => Err(Box::from(ServerError::IncorrectArgument {
+                    incorrect: incorrect.to_string(),
+                    valid: ["used_bytes", "used_percent"]
+                        .iter()
+                        .map(std::string::ToString::to_string)
+                        .collect(),
+                })),
+            },
+            None => Err(Box::from(ServerError::EmptyArguments)),
         }
     }
 }

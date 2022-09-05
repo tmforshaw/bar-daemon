@@ -5,19 +5,18 @@ pub struct Brightness {}
 
 impl Brightness {
     fn get() -> Result<Vec<String>, Box<ServerError>> {
-        match command::run("brightnessctl", &["i"]) {
-            Ok(output) => match output.split('\n').nth(1) {
-                Some(line) => Ok(line
-                    .trim()
-                    .split(' ')
-                    .map(std::string::ToString::to_string)
-                    .collect::<Vec<String>>()),
-                None => Err(Box::from(ServerError::NotInOutput {
-                    looking_for: "brightness".to_string(),
-                    output,
-                })),
-            },
-            Err(e) => Err(Box::from(e)),
+        let bri = command::run("brightnessctl", &["i"])?;
+
+        match bri.split('\n').nth(1) {
+            Some(line) => Ok(line
+                .trim()
+                .split(' ')
+                .map(std::string::ToString::to_string)
+                .collect::<Vec<String>>()),
+            None => Err(Box::from(ServerError::NotInOutput {
+                looking_for: "brightness".to_string(),
+                output: bri,
+            })),
         }
     }
 
@@ -46,15 +45,6 @@ impl Brightness {
                 e: Box::from(e),
             })),
         }
-    }
-
-    pub fn get_json() -> Result<String, Box<ServerError>> {
-        let vec_tup = Self::get_json_tuple()?;
-
-        Ok(format!(
-            "{{\"{}\": {}, \"{}\": \"{}\"}}",
-            vec_tup[0].0, vec_tup[0].1, vec_tup[1].0, vec_tup[1].1
-        ))
     }
 
     pub fn get_json_tuple() -> Result<Vec<(String, String)>, Box<ServerError>> {

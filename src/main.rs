@@ -17,10 +17,8 @@ use command::ServerError;
 async fn main() -> Result<(), std::sync::Arc<ServerError>> {
     let mut args = std::env::args().collect::<Vec<String>>();
 
-    let result = if args.len() <= 1 {
-        server::start().await
-    } else {
-        match args[1].as_str() {
+    let result = match args.get(1) {
+        Some(argument) => match argument.as_str() {
             "get" | "update" => sender::start(&args.split_off(1)).await,
             "daemon" => server::start().await,
             incorrect => Err(std::sync::Arc::from(ServerError::IncorrectArgument {
@@ -30,12 +28,13 @@ async fn main() -> Result<(), std::sync::Arc<ServerError>> {
                     .map(std::string::ToString::to_string)
                     .collect(),
             })),
-        }
+        },
+        None => server::start().await,
     };
 
-    if let Err(e) = result {
+    if let Err(e) = result.clone() {
         eprintln!("{e}");
     }
 
-    Ok(())
+    result
 }

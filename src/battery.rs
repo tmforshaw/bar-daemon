@@ -72,18 +72,6 @@ impl Battery {
         }
     }
 
-    pub fn get_json() -> Result<String, Box<ServerError>> {
-        let vec_tup = Self::get_json_tuple()?;
-
-        let joined_string = vec_tup
-            .iter()
-            .map(|t| format!("\"{}\": \"{}\"", t.0, t.1))
-            .collect::<Vec<String>>()
-            .join(",");
-
-        Ok(format!("{{{}}}", joined_string))
-    }
-
     pub fn get_json_tuple() -> Result<Vec<(String, String)>, Box<ServerError>> {
         let battery_command = Self::get()?;
 
@@ -102,17 +90,20 @@ impl Battery {
         vec_tup: &Vec<(String, String)>,
         args: &[String],
     ) -> Result<String, Box<ServerError>> {
-        match args[0].as_str() {
-            "percent" | "per" | "p" => Ok(vec_tup[0].1.clone()),
-            "time" | "t" => Ok(vec_tup[1].1.clone()),
-            "state" | "s" => Ok(vec_tup[2].1.clone()),
-            incorrect => Err(Box::from(ServerError::IncorrectArgument {
-                incorrect: incorrect.to_string(),
-                valid: ["percent", "time", "state"]
-                    .iter()
-                    .map(std::string::ToString::to_string)
-                    .collect(),
-            })),
+        match args.get(0) {
+            Some(argument) => match argument.as_str() {
+                "percent" | "per" | "p" => Ok(vec_tup[0].1.clone()),
+                "time" | "t" => Ok(vec_tup[1].1.clone()),
+                "state" | "s" => Ok(vec_tup[2].1.clone()),
+                incorrect => Err(Box::from(ServerError::IncorrectArgument {
+                    incorrect: incorrect.to_string(),
+                    valid: ["percent", "time", "state"]
+                        .iter()
+                        .map(std::string::ToString::to_string)
+                        .collect(),
+                })),
+            },
+            None => Err(Box::from(ServerError::EmptyArguments)),
         }
     }
 }
