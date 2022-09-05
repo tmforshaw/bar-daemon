@@ -12,7 +12,11 @@ enum BatteryState {
 }
 
 const BAT_STATES: &[&str] = &["Fully charged", "Charging", "Discharging"];
+
 const BAT_NOTIFY_VALUES: &[u32] = &[5, 15, 20, 30];
+const BAT_NOTIFY_ID: u32 = 42069;
+const BAT_NOTIFY_TIMEOUT: u32 = 5000;
+const BAT_NOTIFY_MESSAGE: &str = "Battery: ";
 
 pub struct Battery {}
 
@@ -76,15 +80,67 @@ impl Battery {
         }
     }
 
-    // pub fn notify() -> Result<(), Box<ServerError>> {
+    pub fn notify(
+        prev_percentage: String,
+        current_percentage: String,
+    ) -> Result<(), Box<ServerError>> {
+        let prev_u32 = match prev_percentage.parse::<u32>() {
+            Ok(prev) => prev,
+            Err(e) => {
+                return Err(Box::from(ServerError::StringParse {
+                    debug_string: prev_percentage,
+                    ty: "integer".to_string(),
+                    e: Box::from(e),
+                }))
+            }
+        };
 
-    // }
+        let curr_u32 = match current_percentage.parse::<u32>() {
+            Ok(curr) => curr,
+            Err(e) => {
+                return Err(Box::from(ServerError::StringParse {
+                    debug_string: current_percentage,
+                    ty: "integer".to_string(),
+                    e: Box::from(e),
+                }))
+            }
+        };
+
+        if curr_u32 < prev_u32 {
+            for value in BAT_NOTIFY_VALUES.iter().rev() {
+                if curr_u32 == *value {
+                    command::run(
+                        "dunstify",
+                        &[
+                            "-u",
+                            "normal",
+                            "-t",
+                            BAT_NOTIFY_TIMEOUT.to_string().as_str(),
+                            "-r",
+                            BAT_NOTIFY_ID.to_string().as_str(),
+                            "-h",
+                            format!("int:value:{curr_u32}").as_str(),
+                            BAT_NOTIFY_MESSAGE,
+                        ],
+                    )?;
+
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
 
     pub async fn update(mutex: &Arc<Mutex<Vec<(String, String)>>>) -> Result<(), Box<ServerError>> {
         let mut lock = mutex.lock().await;
-        *lock = Self::get_json_tuple()?;
 
-        Ok(())
+        let prev_vec_tup = lock.clone();
+        let vec_tup = Self::get_json_tuple()?;
+
+        *lock = vec_tup.clone();
+
+        Self::notify(prev_vec_tup[0].1.clone(), vec_tup[0].1.clone())
     }
 
     pub fn get_json_tuple() -> Result<Vec<(String, String)>, Box<ServerError>> {

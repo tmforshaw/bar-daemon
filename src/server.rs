@@ -162,7 +162,7 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
             }
 
             if let Err(e) = Memory::update(&clone_mem_mutex_1).await {
-                eprintln!("{e}")
+                eprintln!("{e}");
             }
 
             match get_all_json(
