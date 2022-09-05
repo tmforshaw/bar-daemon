@@ -15,11 +15,11 @@ use command::ServerError;
 
 #[tokio::main]
 async fn main() -> Result<(), std::sync::Arc<ServerError>> {
-    let mut args = std::env::args().collect::<Vec<String>>();
+    let args = std::env::args().collect::<Vec<String>>();
 
-    let result = match args.get(1) {
+    match args.get(1) {
         Some(argument) => match argument.as_str() {
-            "get" | "update" => sender::start(&args.split_off(1)).await,
+            "get" | "update" => sender::start(args.split_at(1).1).await,
             "daemon" => server::start().await,
             incorrect => Err(std::sync::Arc::from(ServerError::IncorrectArgument {
                 incorrect: incorrect.to_string(),
@@ -30,11 +30,7 @@ async fn main() -> Result<(), std::sync::Arc<ServerError>> {
             })),
         },
         None => server::start().await,
-    };
+    }?;
 
-    if let Err(e) = result.clone() {
-        eprintln!("{e}");
-    }
-
-    result
+    Ok(())
 }

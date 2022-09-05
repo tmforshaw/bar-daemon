@@ -113,10 +113,22 @@ async fn parse_args(
                             let mut lock = bri_mutex.lock().await;
                             *lock = bri.clone();
                         }
+                        "battery" | "bat" => {
+                            let bat = Battery::get_json_tuple()?;
+
+                            let mut lock = bat_mutex.lock().await;
+                            *lock = bat.clone();
+                        }
+                        "memory" | "mem" => {
+                            let mem = Memory::get_json_tuple()?;
+
+                            let mut lock = mem_mutex.lock().await;
+                            *lock = mem.clone();
+                        }
                         incorrect => {
                             return Err(Arc::from(ServerError::IncorrectArgument {
                                 incorrect: incorrect.to_string(),
-                                valid: vec!["volume", "brightness"]
+                                valid: vec!["volume", "brightness", "battery", "memory"]
                                     .iter()
                                     .map(std::string::ToString::to_string)
                                     .collect(),
@@ -202,12 +214,12 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
             )
             .await
             {
-                eprintln!("{e}");
-                // if let Err(write_e) = futures::join!(socket.write_all(format!("{e}").as_bytes())).0
-                // {
-                //     eprintln!("Could not write errors to socket: {write_e}");
-                // }
-            }
+                if let Err(write_e) = socket.write_all(format!("{e}").as_bytes()).await {
+                    return Err(Arc::from(ServerError::SocketWrite { e: write_e }));
+                }
+            };
+
+            Ok(())
         })
         .await
         {

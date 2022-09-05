@@ -55,6 +55,9 @@ pub enum ServerError {
     UnknownValue { incorrect: String, object: String },
 }
 
+unsafe impl Send for ServerError {}
+unsafe impl Sync for ServerError {}
+
 /// # Errors
 /// Returns an error if the command fails to run
 /// Returns an error if the command's output can't be parsed into a string
