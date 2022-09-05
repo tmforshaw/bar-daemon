@@ -49,59 +49,33 @@ impl Brightness {
     }
 
     pub fn get_json() -> Result<String, Box<ServerError>> {
-        let current_brightness_info = match Self::get() {
-            Ok(info) => info,
-            Err(e) => {
-                return Err(e);
-            }
-        };
-
-        let percent = match Self::get_percent(&current_brightness_info[3]) {
-            Ok(p) => p,
-            Err(e) => {
-                return Err(e);
-            }
-        };
-
-        let value = match Self::get_value(&current_brightness_info[2]) {
-            Ok(v) => v,
-            Err(e) => {
-                return Err(e);
-            }
-        };
+        let vec_tup = Self::get_json_tuple()?;
 
         Ok(format!(
-            "{{\"percent\": {}, \"value\": \"{}\"}}",
-            percent, value
+            "{{\"{}\": {}, \"{}\": \"{}\"}}",
+            vec_tup[0].0, vec_tup[0].1, vec_tup[1].0, vec_tup[1].1
         ))
     }
 
-    pub fn parse_args(args: &[String]) -> Result<String, Box<ServerError>> {
-        let current_brightness_info = match Self::get() {
-            Ok(info) => info,
-            Err(e) => {
-                return Err(e);
-            }
-        };
+    pub fn get_json_tuple() -> Result<Vec<(String, String)>, Box<ServerError>> {
+        let current_brightness_info = Self::get()?;
+        let percent = Self::get_percent(&current_brightness_info[3])?;
+        let value = Self::get_value(&current_brightness_info[2])?;
 
-        let percent = match Self::get_percent(&current_brightness_info[3]) {
-            Ok(p) => p,
-            Err(e) => {
-                return Err(e);
-            }
-        };
+        Ok(vec![
+            ("percent".to_string(), percent.to_string()),
+            ("value".to_string(), value.to_string()),
+        ])
+    }
 
-        let value = match Self::get_value(&current_brightness_info[2]) {
-            Ok(v) => v,
-            Err(e) => {
-                return Err(e);
-            }
-        };
-
+    pub fn parse_args(
+        vec_tup: &Vec<(String, String)>,
+        args: &[String],
+    ) -> Result<String, Box<ServerError>> {
         match args.get(0) {
             Some(argument) => match argument.as_str() {
-                "percent" | "per" | "p" => Ok(percent.to_string()),
-                "value" | "val" | "v" => Ok(value.to_string()),
+                "percent" | "per" | "p" => Ok(vec_tup[0].1.clone()),
+                "value" | "val" | "v" => Ok(vec_tup[1].1.clone()),
                 incorrect => Err(Box::from(ServerError::IncorrectArgument {
                     incorrect: incorrect.to_string(),
                     valid: vec!["percent", "value"]

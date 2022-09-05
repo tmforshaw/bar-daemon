@@ -21,7 +21,7 @@ async fn main() -> Result<(), std::sync::Arc<ServerError>> {
         server::start().await
     } else {
         match args[1].as_str() {
-            "get" | "update" => sender::start(&args[1].clone(), &args.split_off(2)).await,
+            "get" | "update" => sender::start(&args.split_off(1)).await,
             "daemon" => server::start().await,
             incorrect => Err(std::sync::Arc::from(ServerError::IncorrectArgument {
                 incorrect: incorrect.to_string(),

@@ -8,10 +8,15 @@ use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::sync::Mutex;
 
 async fn socket_function(
     socket: &mut tokio::net::TcpStream,
     buf: &mut [u8],
+    vol_mutex: Arc<Mutex<Vec<(String, String)>>>,
+    bri_mutex: Arc<Mutex<Vec<(String, String)>>>,
+    bat_mutex: Arc<Mutex<Vec<(String, String)>>>,
+    ram_mutex: Arc<Mutex<Vec<(String, String)>>>,
 ) -> Result<(), Arc<ServerError>> {
     let n = match socket.read(buf).await {
         Ok(n) if n == 0 => return Err(Arc::from(ServerError::SocketDisconnect)),
@@ -34,37 +39,82 @@ async fn socket_function(
         .map(std::string::ToString::to_string)
         .collect::<Vec<String>>();
 
-    let parseable_args = args.split_off(1);
+    let parseable_args = args.split_off(2);
 
     let reply = match args.get(0) {
-        Some(argument) => match argument.as_str() {
-            "volume" | "vol" => match Volume::parse_args(&parseable_args) {
-                Ok(vol) => Some(vol),
-                Err(e) => return Err(Arc::from(e)),
+        Some(command) => match command.as_str() {
+            "get" => match args.get(1) {
+                Some(argument) => match argument.as_str() {
+                    "volume" | "vol" => {
+                        let lock = vol_mutex.lock().await;
+
+                        Some(Volume::parse_args(&lock.clone(), &parseable_args)?)
+                    }
+                    "brightness" | "bri" => {
+                        let lock = bri_mutex.lock().await;
+
+                        Some(Brightness::parse_args(&lock.clone(), &parseable_args)?)
+                    }
+                    "battery" | "bat" => {
+                        let lock = bat_mutex.lock().await;
+
+                        Some(Battery::parse_args(&lock.clone(), &parseable_args)?)
+                    }
+                    "memory" | "mem" => Some(Memory::parse_args(&parseable_args)?),
+                    incorrect => {
+                        return Err(Arc::from(ServerError::IncorrectArgument {
+                            incorrect: incorrect.to_string(),
+                            valid: vec!["volume", "brightness", "battery", "memory"]
+                                .iter()
+                                .map(std::string::ToString::to_string)
+                                .collect(),
+                        }))
+                    }
+                },
+                None => return Err(Arc::from(ServerError::EmptyArguments)),
             },
-            "brightness" | "bri" => match Brightness::parse_args(&parseable_args) {
-                Ok(bri) => Some(bri),
-                Err(e) => return Err(Arc::from(e)),
-            },
-            "battery" | "bat" => match Battery::parse_args(&parseable_args) {
-                Ok(bat) => Some(bat),
-                Err(e) => return Err(Arc::from(e)),
-            },
-            "memory" | "mem" => match Memory::parse_args(&parseable_args) {
-                Ok(mem) => Some(mem),
-                Err(e) => return Err(Arc::from(e)),
-            },
-            "update" => match get_all_json() {
-                Ok(json) => {
-                    println!("{json}");
-                    None
-                }
-                Err(e) => return Err(Arc::from(e)),
+            "update" => match args.get(1) {
+                Some(argument) => match argument.as_str() {
+                    "volume" | "vol" => {
+                        let vol = Volume::get_json_tuple()?;
+
+                        let mut lock = vol_mutex.lock().await;
+                        *lock = vol.clone();
+
+                        println!("{:?}", *lock);
+
+                        None
+                    }
+                    "brightness" | "bri" => {
+                        let bri = Brightness::get_json_tuple()?;
+
+                        let mut lock = bri_mutex.lock().await;
+                        *lock = bri.clone();
+
+                        None
+                    }
+                    incorrect => {
+                        return Err(Arc::from(ServerError::IncorrectArgument {
+                            incorrect: incorrect.to_string(),
+                            valid: vec!["volume", "brightness"]
+                                .iter()
+                                .map(std::string::ToString::to_string)
+                                .collect(),
+                        }))
+                    }
+                },
+                None => match get_all_json() {
+                    Ok(json) => {
+                        println!("{json}");
+                        None
+                    }
+                    Err(e) => return Err(Arc::from(e)),
+                },
             },
             incorrect => {
                 return Err(Arc::from(ServerError::IncorrectArgument {
                     incorrect: incorrect.to_string(),
-                    valid: vec!["volume", "brightness", "battery", "memory", "update"]
+                    valid: vec!["get", "update"]
                         .iter()
                         .map(std::string::ToString::to_string)
                         .collect(),
@@ -89,20 +139,32 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
         Err(e) => return Err(Arc::from(ServerError::AddressInUse { e })),
     };
 
-    tokio::spawn(async move {
-        use std::time::Duration;
+    // tokio::spawn(async move {
+    //     use std::time::Duration;
 
-        loop {
-            match get_all_json() {
-                Ok(json) => {
-                    println!("{json}");
-                }
-                Err(e) => eprintln!("{e}"),
-            };
+    //     loop {
+    //         match get_all_json() {
+    //             Ok(json) => {
+    //                 println!("{json}");
+    //             }
+    //             Err(e) => eprintln!("{e}"),
+    //         };
 
-            std::thread::sleep(Duration::from_millis(1500));
-        }
-    });
+    //         std::thread::sleep(Duration::from_millis(1500));
+    //     }
+    // });
+
+    let vol_mutex: Arc<Mutex<Vec<(String, String)>>> =
+        Arc::new(Mutex::new(Volume::get_json_tuple().unwrap()));
+
+    let bri_mutex: Arc<Mutex<Vec<(String, String)>>> =
+        Arc::new(Mutex::new(Brightness::get_json_tuple().unwrap()));
+
+    let bat_mutex: Arc<Mutex<Vec<(String, String)>>> =
+        Arc::new(Mutex::new(Battery::get_json_tuple().unwrap()));
+
+    let ram_mutex: Arc<Mutex<Vec<(String, String)>>> =
+        Arc::new(Mutex::new(Brightness::get_json_tuple().unwrap()));
 
     loop {
         let mut socket = match listener.accept().await {
@@ -110,10 +172,24 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
             Err(e) => return Err(Arc::from(ServerError::AddressInUse { e })),
         };
 
+        let clone_vol_mutex = vol_mutex.clone();
+        let clone_bri_mutex = bri_mutex.clone();
+        let clone_bat_mutex = bat_mutex.clone();
+        let clone_ram_mutex = ram_mutex.clone();
+
         if let Err(join_error) = tokio::spawn(async move {
             let mut buf = [0; 1024];
 
-            if let Err(e) = socket_function(&mut socket, &mut buf).await {
+            if let Err(e) = socket_function(
+                &mut socket,
+                &mut buf,
+                clone_vol_mutex,
+                clone_bri_mutex,
+                clone_bat_mutex,
+                clone_ram_mutex,
+            )
+            .await
+            {
                 eprintln!("{e}");
                 // if let Err(write_e) = futures::join!(socket.write_all(format!("{e}").as_bytes())).0
                 // {

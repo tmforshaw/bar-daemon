@@ -52,53 +52,42 @@ impl Volume {
     }
 
     pub fn get_json() -> Result<String, Box<ServerError>> {
-        let volume_command = match Self::get() {
-            Ok(output) => output,
-            Err(e) => return Err(e),
-        };
-
-        let percent = match Self::get_percent(&volume_command) {
-            Ok(per) => per,
-            Err(e) => return Err(e),
-        };
-
-        let decibel = match Self::get_decibel(&volume_command) {
-            Ok(db) => db,
-            Err(e) => return Err(e),
-        };
+        let vec_tup = Self::get_json_tuple()?;
 
         Ok(format!(
-            "{{\"percent\": {}, \"decibel\": \"{}\"}}",
-            percent, decibel
+            "{{\"{}\": \"{}\", \"{}\": \"{}\"}}",
+            vec_tup[0].0, vec_tup[0].1, vec_tup[1].0, vec_tup[1].1
         ))
     }
 
-    pub fn parse_args(args: &[String]) -> Result<String, Box<ServerError>> {
-        let volume_command = match Self::get() {
-            Ok(output) => output,
-            Err(e) => return Err(e),
-        };
+    pub fn get_json_tuple() -> Result<Vec<(String, String)>, Box<ServerError>> {
+        let volume_command = Self::get()?;
+        let percent = Self::get_percent(&volume_command)?;
+        let decibel = Self::get_decibel(&volume_command)?;
 
-        let percent = match Self::get_percent(&volume_command) {
-            Ok(per) => per,
-            Err(e) => return Err(e),
-        };
+        Ok(vec![
+            ("percent".to_string(), percent.to_string()),
+            ("decibel".to_string(), decibel.to_string()),
+        ])
+    }
 
-        let decibel = match Self::get_decibel(&volume_command) {
-            Ok(db) => db,
-            Err(e) => return Err(e),
-        };
-
-        match args[0].as_str() {
-            "percent" | "per" | "p" => Ok(percent.to_string()),
-            "decibel" | "dec" | "d" => Ok(decibel.to_string()),
-            incorrect => Err(Box::from(ServerError::IncorrectArgument {
-                incorrect: incorrect.to_string(),
-                valid: vec!["percent", "decibel"]
-                    .iter()
-                    .map(std::string::ToString::to_string)
-                    .collect(),
-            })),
+    pub fn parse_args(
+        vec_tup: &Vec<(String, String)>,
+        args: &[String],
+    ) -> Result<String, Box<ServerError>> {
+        match args.get(0) {
+            Some(argument) => match argument.as_str() {
+                "percent" | "per" | "p" => Ok(vec_tup[0].1.clone()),
+                "decibel" | "dec" | "d" => Ok(vec_tup[1].1.clone()),
+                incorrect => Err(Box::from(ServerError::IncorrectArgument {
+                    incorrect: incorrect.to_string(),
+                    valid: vec!["percent", "decibel"]
+                        .iter()
+                        .map(std::string::ToString::to_string)
+                        .collect(),
+                })),
+            },
+            None => Err(Box::from(ServerError::EmptyArguments)),
         }
     }
 }
