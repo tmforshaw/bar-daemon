@@ -161,7 +161,7 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
                 eprintln!("{e}");
             }
 
-            if let Err(e) = Memory::update(&clone_bat_mutex_1).await {
+            if let Err(e) = Memory::update(&clone_mem_mutex_1).await {
                 eprintln!("{e}")
             }
 
