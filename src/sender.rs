@@ -5,7 +5,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 pub async fn start(args: &[String]) -> Result<(), Arc<ServerError>> {
-    let mut stream = match TcpStream::connect("127.0.0.1:8080").await {
+    let mut stream = match TcpStream::connect(crate::IP_AND_PORT).await {
         Ok(stream) => stream,
         Err(e) => return Err(Arc::from(ServerError::SocketConnect { e })),
     };

@@ -13,6 +13,8 @@ mod volume;
 
 use command::ServerError;
 
+pub static IP_AND_PORT: &str = "127.0.0.69:6969";
+
 #[tokio::main]
 async fn main() -> Result<(), std::sync::Arc<ServerError>> {
     let args = std::env::args().collect::<Vec<String>>();

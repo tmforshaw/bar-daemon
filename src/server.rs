@@ -131,7 +131,7 @@ async fn parse_args(
 }
 
 pub async fn start() -> Result<(), Arc<ServerError>> {
-    let listener = match TcpListener::bind("127.0.0.1:8080").await {
+    let listener = match TcpListener::bind(crate::IP_AND_PORT).await {
         Ok(handle) => handle,
         Err(e) => return Err(Arc::from(ServerError::AddressInUse { e })),
     };
