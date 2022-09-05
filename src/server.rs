@@ -68,25 +68,18 @@ async fn parse_args(
 
                 match args.get(1) {
                     Some(argument) => match argument.as_str() {
-                        "volume" | "vol" => {
-                            let lock = vol_mutex.lock().await;
-
-                            Ok(Some(Volume::parse_args(&lock.clone(), parseable_args)?))
-                        }
-                        "brightness" | "bri" => {
-                            let lock = bri_mutex.lock().await;
-
-                            Ok(Some(Brightness::parse_args(&lock.clone(), parseable_args)?))
-                        }
-                        "battery" | "bat" => {
-                            let lock = bat_mutex.lock().await;
-
-                            Ok(Some(Battery::parse_args(&lock.clone(), parseable_args)?))
-                        }
-                        "memory" | "mem" => {
-                            let lock = mem_mutex.lock().await;
-                            Ok(Some(Memory::parse_args(&lock.clone(), parseable_args)?))
-                        }
+                        "volume" | "vol" => Ok(Some(
+                            Volume::parse_args(&vol_mutex.clone(), parseable_args).await?,
+                        )),
+                        "brightness" | "bri" => Ok(Some(
+                            Brightness::parse_args(&bri_mutex.clone(), parseable_args).await?,
+                        )),
+                        "battery" | "bat" => Ok(Some(
+                            Battery::parse_args(&bat_mutex.clone(), parseable_args).await?,
+                        )),
+                        "memory" | "mem" => Ok(Some(
+                            Memory::parse_args(&mem_mutex.clone(), parseable_args).await?,
+                        )),
                         incorrect => Err(Arc::from(ServerError::IncorrectArgument {
                             incorrect: incorrect.to_string(),
                             valid: vec!["volume", "brightness", "battery", "memory"]
@@ -101,30 +94,10 @@ async fn parse_args(
             "update" => {
                 match args.get(1) {
                     Some(argument) => match argument.as_str() {
-                        "volume" | "vol" => {
-                            let vol = Volume::get_json_tuple()?;
-
-                            let mut lock = vol_mutex.lock().await;
-                            *lock = vol.clone();
-                        }
-                        "brightness" | "bri" => {
-                            let bri = Brightness::get_json_tuple()?;
-
-                            let mut lock = bri_mutex.lock().await;
-                            *lock = bri.clone();
-                        }
-                        "battery" | "bat" => {
-                            let bat = Battery::get_json_tuple()?;
-
-                            let mut lock = bat_mutex.lock().await;
-                            *lock = bat.clone();
-                        }
-                        "memory" | "mem" => {
-                            let mem = Memory::get_json_tuple()?;
-
-                            let mut lock = mem_mutex.lock().await;
-                            *lock = mem.clone();
-                        }
+                        "volume" | "vol" => Volume::update(&vol_mutex).await?,
+                        "brightness" | "bri" => Brightness::update(&bri_mutex).await?,
+                        "battery" | "bat" => Battery::update(&bat_mutex).await?,
+                        "memory" | "mem" => Memory::update(&mem_mutex).await?,
                         incorrect => {
                             return Err(Arc::from(ServerError::IncorrectArgument {
                                 incorrect: incorrect.to_string(),
@@ -184,6 +157,14 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
         use std::time::Duration;
 
         loop {
+            if let Err(e) = Battery::update(&clone_bat_mutex_1).await {
+                eprintln!("{e}");
+            }
+
+            if let Err(e) = Memory::update(&clone_bat_mutex_1).await {
+                eprintln!("{e}")
+            }
+
             match get_all_json(
                 clone_vol_mutex_1.clone(),
                 clone_bri_mutex_1.clone(),

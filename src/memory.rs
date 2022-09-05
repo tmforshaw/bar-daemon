@@ -1,6 +1,9 @@
 use crate::command;
 use crate::command::ServerError;
 
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
 pub struct Memory {}
 
 impl Memory {
@@ -61,6 +64,13 @@ impl Memory {
         Ok((used_bytes / available_bytes) * 100f32)
     }
 
+    pub async fn update(mutex: &Arc<Mutex<Vec<(String, String)>>>) -> Result<(), Box<ServerError>> {
+        let mut lock = mutex.lock().await;
+        *lock = Self::get_json_tuple()?;
+
+        Ok(())
+    }
+
     pub fn get_json_tuple() -> Result<Vec<(String, String)>, Box<ServerError>> {
         let memory_command = Self::get()?;
         let used_bytes = Self::get_used_bytes(&memory_command)?;
@@ -72,10 +82,13 @@ impl Memory {
         ])
     }
 
-    pub fn parse_args(
-        vec_tup: &[(String, String)],
+    pub async fn parse_args(
+        mutex: &Arc<Mutex<Vec<(String, String)>>>,
         args: &[String],
     ) -> Result<String, Box<ServerError>> {
+        let lock = mutex.lock().await;
+        let vec_tup = lock.clone();
+
         match args.get(0) {
             Some(argument) => match argument.as_str() {
                 "used_bytes" | "used_b" | "ub" => Ok(vec_tup[0].1.clone()),
