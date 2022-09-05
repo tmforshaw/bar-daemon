@@ -61,7 +61,7 @@ async fn parse_args(
         Some(command) => match command.as_str() {
             "get" => {
                 let parseable_args = if args.len() > 2 {
-                    args.split_at(2).0
+                    args.split_at(2).1
                 } else {
                     return Err(Arc::from(ServerError::EmptyArguments));
                 };
@@ -163,21 +163,6 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
         Err(e) => return Err(Arc::from(ServerError::AddressInUse { e })),
     };
 
-    // tokio::spawn(async move {
-    //     use std::time::Duration;
-
-    //     loop {
-    //         match get_all_json() {
-    //             Ok(json) => {
-    //                 println!("{json}");
-    //             }
-    //             Err(e) => eprintln!("{e}"),
-    //         };
-
-    //         std::thread::sleep(Duration::from_millis(1500));
-    //     }
-    // });
-
     let vol_mutex: Arc<Mutex<Vec<(String, String)>>> =
         Arc::new(Mutex::new(Volume::get_json_tuple()?));
 
@@ -190,16 +175,43 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
     let mem_mutex: Arc<Mutex<Vec<(String, String)>>> =
         Arc::new(Mutex::new(Memory::get_json_tuple()?));
 
+    let clone_vol_mutex_1 = vol_mutex.clone();
+    let clone_bri_mutex_1 = bri_mutex.clone();
+    let clone_bat_mutex_1 = bat_mutex.clone();
+    let clone_mem_mutex_1 = mem_mutex.clone();
+
+    tokio::spawn(async move {
+        use std::time::Duration;
+
+        loop {
+            match get_all_json(
+                clone_vol_mutex_1.clone(),
+                clone_bri_mutex_1.clone(),
+                clone_bat_mutex_1.clone(),
+                clone_mem_mutex_1.clone(),
+            )
+            .await
+            {
+                Ok(json) => {
+                    println!("{json}");
+                }
+                Err(e) => eprintln!("{e}"),
+            };
+
+            std::thread::sleep(Duration::from_millis(1500));
+        }
+    });
+
     loop {
         let mut socket = match listener.accept().await {
             Ok((socket, _)) => socket,
             Err(e) => return Err(Arc::from(ServerError::AddressInUse { e })),
         };
 
-        let clone_vol_mutex = vol_mutex.clone();
-        let clone_bri_mutex = bri_mutex.clone();
-        let clone_bat_mutex = bat_mutex.clone();
-        let clone_mem_mutex = mem_mutex.clone();
+        let clone_vol_mutex_2 = vol_mutex.clone();
+        let clone_bri_mutex_2 = bri_mutex.clone();
+        let clone_bat_mutex_2 = bat_mutex.clone();
+        let clone_mem_mutex_2 = mem_mutex.clone();
 
         if let Err(join_error) = tokio::spawn(async move {
             let mut buf = [0; 1024];
@@ -207,10 +219,10 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
             if let Err(e) = socket_function(
                 &mut socket,
                 &mut buf,
-                clone_vol_mutex,
-                clone_bri_mutex,
-                clone_bat_mutex,
-                clone_mem_mutex,
+                clone_vol_mutex_2,
+                clone_bri_mutex_2,
+                clone_bat_mutex_2,
+                clone_mem_mutex_2,
             )
             .await
             {
