@@ -63,7 +63,7 @@ impl Volume {
     }
 
     pub fn parse_args(
-        vec_tup: &Vec<(String, String)>,
+        vec_tup: &[(String, String)],
         args: &[String],
     ) -> Result<String, Box<ServerError>> {
         match args.get(0) {
