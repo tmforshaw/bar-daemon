@@ -133,7 +133,14 @@ async fn parse_args(
 pub async fn start() -> Result<(), Arc<ServerError>> {
     let listener = match TcpListener::bind(crate::IP_AND_PORT).await {
         Ok(handle) => handle,
-        Err(e) => return Err(Arc::from(ServerError::AddressInUse { e })),
+        Err(_) => {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+
+            match TcpListener::bind(crate::IP_AND_PORT).await {
+                Ok(handle) => handle,
+                Err(e) => return Err(Arc::from(ServerError::AddressInUse { e })),
+            }
+        }
     };
 
     let vol_mutex: Arc<Mutex<Vec<(String, String)>>> =
