@@ -134,7 +134,7 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
     let listener = match TcpListener::bind(crate::IP_AND_PORT).await {
         Ok(handle) => handle,
         Err(_) => {
-            std::thread::sleep(std::time::Duration::from_millis(1500));
+            std::thread::sleep(std::time::Duration::from_millis(4000));
 
             match TcpListener::bind(crate::IP_AND_PORT).await {
                 Ok(handle) => handle,
