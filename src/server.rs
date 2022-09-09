@@ -131,16 +131,28 @@ async fn parse_args(
 }
 
 pub async fn start() -> Result<(), Arc<ServerError>> {
-    let listener = match TcpListener::bind(crate::IP_AND_PORT).await {
-        Ok(handle) => handle,
-        Err(_) => {
-            std::thread::sleep(std::time::Duration::from_millis(4000));
+    let mut handle = None;
 
-            match TcpListener::bind(crate::IP_AND_PORT).await {
-                Ok(handle) => handle,
-                Err(e) => return Err(Arc::from(ServerError::AddressInUse { e })),
+    for count in 0..=crate::RETRY_AMOUNT {
+        let match_handle = match TcpListener::bind(crate::IP_AND_PORT).await {
+            Ok(handle) => Ok(handle),
+            Err(_) if count < crate::RETRY_AMOUNT => {
+                eprintln!("Trying to bind listener again");
+                std::thread::sleep(std::time::Duration::from_millis(crate::RETRY_TIMEOUT));
+
+                continue;
             }
-        }
+            Err(e) => Err(e),
+        };
+
+        handle = Some(match_handle);
+        break;
+    }
+
+    let listener = match handle {
+        Some(Ok(h)) => h,
+        Some(Err(e)) => return Err(Arc::from(ServerError::AddressInUse { e })),
+        None => return Err(Arc::from(ServerError::RetryError)),
     };
 
     let vol_mutex: Arc<Mutex<Vec<(String, String)>>> =

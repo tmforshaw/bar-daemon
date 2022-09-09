@@ -53,6 +53,8 @@ pub enum ServerError {
     SocketDisconnect,
     #[error("Unknown value '{incorrect}' found for '{object}'")]
     UnknownValue { incorrect: String, object: String },
+    #[error("Could not retry command correctly")]
+    RetryError,
 }
 
 unsafe impl Send for ServerError {}
