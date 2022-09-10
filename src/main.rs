@@ -15,7 +15,7 @@ use command::ServerError;
 
 pub static IP_AND_PORT: &str = "127.0.0.69:6969";
 pub static RETRY_AMOUNT: u32 = 5;
-pub static RETRY_TIMEOUT: u64 = 2500;
+pub static RETRY_TIMEOUT: u64 = 4000;
 
 #[tokio::main]
 async fn main() -> Result<(), std::sync::Arc<ServerError>> {

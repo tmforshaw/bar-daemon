@@ -163,7 +163,11 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
     };
 
     let vol_mutex: Arc<Mutex<Vec<(String, String)>>> =
-        Arc::new(Mutex::new(Volume::get_json_tuple()?));
+        Arc::new(Mutex::new(match call_and_retry(Volume::get_json_tuple()) {
+            Some(Ok(vol_out)) => vol_out,
+            Some(Err(e)) => return Err(Arc::from(e)),
+            None => return Err(Arc::from(ServerError::RetryError)),
+        }));
 
     let bri_mutex: Arc<Mutex<Vec<(String, String)>>> =
         Arc::new(Mutex::new(Brightness::get_json_tuple()?));
