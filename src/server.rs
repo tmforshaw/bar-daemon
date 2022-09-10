@@ -130,14 +130,17 @@ async fn parse_args(
     }
 }
 
-pub async fn start() -> Result<(), Arc<ServerError>> {
-    let mut handle = None;
+pub fn call_and_retry<O, E>(func_output: Result<O, E>) -> Option<Result<O, E>>
+where
+    E: std::error::Error,
+{
+    let mut output = None;
 
     for count in 0..=crate::RETRY_AMOUNT {
-        let match_handle = match TcpListener::bind(crate::IP_AND_PORT).await {
-            Ok(handle) => Ok(handle),
+        let match_output = match func_output {
+            Ok(output) => Ok(output),
             Err(_) if count < crate::RETRY_AMOUNT => {
-                eprintln!("Trying to bind listener again");
+                eprintln!("Retrying function with type {}", std::any::type_name::<O>(),);
                 std::thread::sleep(std::time::Duration::from_millis(crate::RETRY_TIMEOUT));
 
                 continue;
@@ -145,12 +148,16 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
             Err(e) => Err(e),
         };
 
-        handle = Some(match_handle);
+        output = Some(match_output);
         break;
     }
 
-    let listener = match handle {
-        Some(Ok(h)) => h,
+    output
+}
+
+pub async fn start() -> Result<(), Arc<ServerError>> {
+    let listener = match call_and_retry(TcpListener::bind(crate::IP_AND_PORT).await) {
+        Some(Ok(handle)) => handle,
         Some(Err(e)) => return Err(Arc::from(ServerError::AddressInUse { e })),
         None => return Err(Arc::from(ServerError::RetryError)),
     };
