@@ -130,14 +130,40 @@ async fn parse_args(
     }
 }
 
-pub fn call_and_retry<O, E>(func_output: Result<O, E>) -> Option<Result<O, E>>
+pub fn call_and_retry<O, E>(func: impl Fn() -> Result<O, E>) -> Option<Result<O, E>>
 where
     E: std::error::Error,
 {
     let mut output = None;
 
     for count in 0..=crate::RETRY_AMOUNT {
-        let match_output = match func_output {
+        let match_output = match func() {
+            Ok(output) => Ok(output),
+            Err(_) if count < crate::RETRY_AMOUNT => {
+                eprintln!("Retrying function with type {}", std::any::type_name::<O>(),);
+                std::thread::sleep(std::time::Duration::from_millis(crate::RETRY_TIMEOUT));
+
+                continue;
+            }
+            Err(e) => Err(e),
+        };
+
+        output = Some(match_output);
+        break;
+    }
+
+    output
+}
+
+pub async fn call_and_retry_async<O, E, Fut>(func: impl Fn() -> Fut) -> Option<Result<O, E>>
+where
+    E: std::error::Error,
+    Fut: std::future::Future<Output = Result<O, E>>,
+{
+    let mut output = None;
+
+    for count in 0..=crate::RETRY_AMOUNT {
+        let match_output = match func().await {
             Ok(output) => Ok(output),
             Err(_) if count < crate::RETRY_AMOUNT => {
                 eprintln!("Retrying function with type {}", std::any::type_name::<O>(),);
@@ -156,18 +182,23 @@ where
 }
 
 pub async fn start() -> Result<(), Arc<ServerError>> {
-    let listener = match call_and_retry(TcpListener::bind(crate::IP_AND_PORT).await) {
+    let listener = match call_and_retry_async(|| async {
+        TcpListener::bind(crate::IP_AND_PORT).await
+    })
+    .await
+    {
         Some(Ok(handle)) => handle,
         Some(Err(e)) => return Err(Arc::from(ServerError::AddressInUse { e })),
         None => return Err(Arc::from(ServerError::RetryError)),
     };
 
-    let vol_mutex: Arc<Mutex<Vec<(String, String)>>> =
-        Arc::new(Mutex::new(match call_and_retry(Volume::get_json_tuple()) {
+    let vol_mutex: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(
+        match call_and_retry(|| Volume::get_json_tuple()) {
             Some(Ok(vol_out)) => vol_out,
             Some(Err(e)) => return Err(Arc::from(e)),
             None => return Err(Arc::from(ServerError::RetryError)),
-        }));
+        },
+    ));
 
     let bri_mutex: Arc<Mutex<Vec<(String, String)>>> =
         Arc::new(Mutex::new(Brightness::get_json_tuple()?));
