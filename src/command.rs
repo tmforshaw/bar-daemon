@@ -79,3 +79,54 @@ pub fn run(command_name: &str, args: &[&str]) -> Result<String, ServerError> {
         }),
     }
 }
+
+pub fn call_and_retry<O, E>(func: impl Fn() -> Result<O, E>) -> Option<Result<O, E>>
+where
+    E: std::error::Error,
+{
+    let mut output = None;
+
+    for count in 0..=crate::RETRY_AMOUNT {
+        let match_output = match func() {
+            Ok(output) => Ok(output),
+            Err(_) if count < crate::RETRY_AMOUNT => {
+                eprintln!("Retrying function with type {}", std::any::type_name::<O>(),);
+                std::thread::sleep(std::time::Duration::from_millis(crate::RETRY_TIMEOUT));
+
+                continue;
+            }
+            Err(e) => Err(e),
+        };
+
+        output = Some(match_output);
+        break;
+    }
+
+    output
+}
+
+pub async fn call_and_retry_async<O, E, Fut>(func: impl Fn() -> Fut) -> Option<Result<O, E>>
+where
+    E: std::error::Error,
+    Fut: std::future::Future<Output = Result<O, E>>,
+{
+    let mut output = None;
+
+    for count in 0..=crate::RETRY_AMOUNT {
+        let match_output = match func().await {
+            Ok(output) => Ok(output),
+            Err(_) if count < crate::RETRY_AMOUNT => {
+                eprintln!("Retrying function with type {}", std::any::type_name::<O>(),);
+                std::thread::sleep(std::time::Duration::from_millis(crate::RETRY_TIMEOUT));
+
+                continue;
+            }
+            Err(e) => Err(e),
+        };
+
+        output = Some(match_output);
+        break;
+    }
+
+    output
+}
