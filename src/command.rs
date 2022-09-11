@@ -1,4 +1,5 @@
 use std::process::Command;
+use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -39,7 +40,7 @@ pub enum ServerError {
     StringParse {
         debug_string: String,
         ty: String,
-        e: Box<dyn std::error::Error>,
+        e: Arc<dyn std::error::Error + Send + Sync>,
     },
     #[error("Could not find '{looking_for}' part of output: '{output}'")]
     NotInOutput { looking_for: String, output: String },
@@ -55,10 +56,12 @@ pub enum ServerError {
     UnknownValue { incorrect: String, object: String },
     #[error("Could not retry command correctly")]
     RetryError,
+    #[error("Could not send '{message}' across channel")]
+    ChannelSend { message: String },
 }
 
-unsafe impl Send for ServerError {}
-unsafe impl Sync for ServerError {}
+// unsafe impl Send for ServerError {}
+// unsafe impl Sync for ServerError {}
 
 /// # Errors
 /// Returns an error if the command fails to run
@@ -105,10 +108,12 @@ where
     output
 }
 
-pub async fn call_and_retry_async<O, E, Fut>(func: impl Fn() -> Fut) -> Option<Result<O, E>>
+pub async fn call_and_retry_async<O, E, F, Fut>(func: F) -> Option<Result<O, E>>
 where
-    E: std::error::Error,
-    Fut: std::future::Future<Output = Result<O, E>>,
+    O: Send + Sync,
+    E: std::error::Error + Send + Sync,
+    F: Fn() -> Fut + Send + Sync,
+    Fut: std::future::Future<Output = Result<O, E>> + Send + Sync,
 {
     let mut output = None;
 

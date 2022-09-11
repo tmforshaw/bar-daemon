@@ -21,28 +21,28 @@ const BAT_NOTIFY_MESSAGE: &str = "Battery: ";
 pub struct Battery {}
 
 impl Battery {
-    fn get() -> Result<String, Box<ServerError>> {
+    fn get() -> Result<String, Arc<ServerError>> {
         Ok(command::run("acpi", &["-b"])?)
     }
 
-    fn get_percent(battery_command: &str) -> Result<u32, Box<ServerError>> {
+    fn get_percent(battery_command: &str) -> Result<u32, Arc<ServerError>> {
         match battery_command.split_whitespace().nth(3) {
             Some(percentage) => match percentage.trim().trim_end_matches("%,").parse() {
                 Ok(integer) => Ok(integer),
-                Err(e) => Err(Box::from(ServerError::StringParse {
+                Err(e) => Err(Arc::from(ServerError::StringParse {
                     debug_string: percentage.to_string(),
                     ty: "integer".to_string(),
-                    e: Box::from(e),
+                    e: Arc::from(e),
                 })),
             },
-            None => Err(Box::from(ServerError::NotInOutput {
+            None => Err(Arc::from(ServerError::NotInOutput {
                 looking_for: "battery".to_string(),
                 output: battery_command.to_string(),
             })),
         }
     }
 
-    fn get_time(battery_command: &str) -> Result<String, Box<ServerError>> {
+    fn get_time(battery_command: &str) -> Result<String, Arc<ServerError>> {
         match battery_command.split_whitespace().nth(4) {
             Some(time) => Ok(time.trim().replace(':', " ")),
             None => {
@@ -53,7 +53,7 @@ impl Battery {
                         BAT_STATES[BatteryState::FullyCharged as usize],
                     ))
                 } else {
-                    Err(Box::from(ServerError::NotInOutput {
+                    Err(Arc::from(ServerError::NotInOutput {
                         looking_for: "battery time".to_string(),
                         output: battery_command.to_string(),
                     }))
@@ -62,18 +62,18 @@ impl Battery {
         }
     }
 
-    fn get_state(battery_command: &str) -> Result<BatteryState, Box<ServerError>> {
+    fn get_state(battery_command: &str) -> Result<BatteryState, Arc<ServerError>> {
         match battery_command.split_whitespace().nth(2) {
             Some(state) => match state.trim_end_matches(',') {
                 "Full" => Ok(BatteryState::FullyCharged),
                 "Charging" => Ok(BatteryState::Charging),
                 "Discharging" => Ok(BatteryState::Discharging),
-                incorrect => Err(Box::from(ServerError::UnknownValue {
+                incorrect => Err(Arc::from(ServerError::UnknownValue {
                     incorrect: incorrect.to_string(),
                     object: "battery".to_string(),
                 })),
             },
-            None => Err(Box::from(ServerError::NotInOutput {
+            None => Err(Arc::from(ServerError::NotInOutput {
                 looking_for: "battery state".to_string(),
                 output: battery_command.to_string(),
             })),
@@ -83,14 +83,14 @@ impl Battery {
     pub fn notify(
         prev_percentage: String,
         current_percentage: String,
-    ) -> Result<(), Box<ServerError>> {
+    ) -> Result<(), Arc<ServerError>> {
         let prev_u32 = match prev_percentage.parse::<u32>() {
             Ok(prev) => prev,
             Err(e) => {
-                return Err(Box::from(ServerError::StringParse {
+                return Err(Arc::from(ServerError::StringParse {
                     debug_string: prev_percentage,
                     ty: "integer".to_string(),
-                    e: Box::from(e),
+                    e: Arc::from(e),
                 }))
             }
         };
@@ -98,10 +98,10 @@ impl Battery {
         let curr_u32 = match current_percentage.parse::<u32>() {
             Ok(curr) => curr,
             Err(e) => {
-                return Err(Box::from(ServerError::StringParse {
+                return Err(Arc::from(ServerError::StringParse {
                     debug_string: current_percentage,
                     ty: "integer".to_string(),
-                    e: Box::from(e),
+                    e: Arc::from(e),
                 }))
             }
         };
@@ -132,7 +132,7 @@ impl Battery {
         Ok(())
     }
 
-    pub async fn update(mutex: &Arc<Mutex<Vec<(String, String)>>>) -> Result<(), Box<ServerError>> {
+    pub async fn update(mutex: &Arc<Mutex<Vec<(String, String)>>>) -> Result<(), Arc<ServerError>> {
         let mut lock = mutex.lock().await;
 
         let prev_vec_tup = lock.clone();
@@ -143,7 +143,7 @@ impl Battery {
         Self::notify(prev_vec_tup[0].1.clone(), vec_tup[0].1.clone())
     }
 
-    pub fn get_json_tuple() -> Result<Vec<(String, String)>, Box<ServerError>> {
+    pub fn get_json_tuple() -> Result<Vec<(String, String)>, Arc<ServerError>> {
         let battery_command = Self::get()?;
 
         let percent = Self::get_percent(&battery_command)?;
@@ -160,7 +160,7 @@ impl Battery {
     pub async fn parse_args(
         mutex: &Arc<Mutex<Vec<(String, String)>>>,
         args: &[String],
-    ) -> Result<String, Box<ServerError>> {
+    ) -> Result<String, Arc<ServerError>> {
         let lock = mutex.lock().await;
         let vec_tup = lock.clone();
 
@@ -169,7 +169,7 @@ impl Battery {
                 "percent" | "per" | "p" => Ok(vec_tup[0].1.clone()),
                 "time" | "t" => Ok(vec_tup[1].1.clone()),
                 "state" | "s" => Ok(vec_tup[2].1.clone()),
-                incorrect => Err(Box::from(ServerError::IncorrectArgument {
+                incorrect => Err(Arc::from(ServerError::IncorrectArgument {
                     incorrect: incorrect.to_string(),
                     valid: ["percent", "time", "state"]
                         .iter()
@@ -177,7 +177,7 @@ impl Battery {
                         .collect(),
                 })),
             },
-            None => Err(Box::from(ServerError::EmptyArguments)),
+            None => Err(Arc::from(ServerError::EmptyArguments)),
         }
     }
 }

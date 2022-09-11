@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 pub struct Brightness {}
 
 impl Brightness {
-    fn get() -> Result<Vec<String>, Box<ServerError>> {
+    fn get() -> Result<Vec<String>, Arc<ServerError>> {
         let bri = command::run("brightnessctl", &["i"])?;
 
         match bri.split('\n').nth(1) {
@@ -16,14 +16,14 @@ impl Brightness {
                 .split(' ')
                 .map(std::string::ToString::to_string)
                 .collect::<Vec<String>>()),
-            None => Err(Box::from(ServerError::NotInOutput {
+            None => Err(Arc::from(ServerError::NotInOutput {
                 looking_for: "brightness".to_string(),
                 output: bri,
             })),
         }
     }
 
-    fn get_percent(percentage_unfiltered: &str) -> Result<u32, Box<ServerError>> {
+    fn get_percent(percentage_unfiltered: &str) -> Result<u32, Arc<ServerError>> {
         match percentage_unfiltered
             .trim()
             .trim_start_matches('(')
@@ -31,33 +31,33 @@ impl Brightness {
             .parse()
         {
             Ok(integer) => Ok(integer),
-            Err(e) => Err(Box::from(ServerError::StringParse {
+            Err(e) => Err(Arc::from(ServerError::StringParse {
                 debug_string: percentage_unfiltered.to_string(),
                 ty: "integer".to_string(),
-                e: Box::from(e),
+                e: Arc::from(e),
             })),
         }
     }
 
-    fn get_value(value_unfiltered: &str) -> Result<u32, Box<ServerError>> {
+    fn get_value(value_unfiltered: &str) -> Result<u32, Arc<ServerError>> {
         match value_unfiltered.trim().parse() {
             Ok(integer) => Ok(integer),
-            Err(e) => Err(Box::from(ServerError::StringParse {
+            Err(e) => Err(Arc::from(ServerError::StringParse {
                 debug_string: value_unfiltered.to_string(),
                 ty: "integer".to_string(),
-                e: Box::from(e),
+                e: Arc::from(e),
             })),
         }
     }
 
-    pub async fn update(mutex: &Arc<Mutex<Vec<(String, String)>>>) -> Result<(), Box<ServerError>> {
+    pub async fn update(mutex: &Arc<Mutex<Vec<(String, String)>>>) -> Result<(), Arc<ServerError>> {
         let mut lock = mutex.lock().await;
         *lock = Self::get_json_tuple()?;
 
         Ok(())
     }
 
-    pub fn get_json_tuple() -> Result<Vec<(String, String)>, Box<ServerError>> {
+    pub fn get_json_tuple() -> Result<Vec<(String, String)>, Arc<ServerError>> {
         let current_brightness_info = Self::get()?;
         let percent = Self::get_percent(&current_brightness_info[3])?;
         let value = Self::get_value(&current_brightness_info[2])?;
@@ -71,7 +71,7 @@ impl Brightness {
     pub async fn parse_args(
         mutex: &Arc<Mutex<Vec<(String, String)>>>,
         args: &[String],
-    ) -> Result<String, Box<ServerError>> {
+    ) -> Result<String, Arc<ServerError>> {
         let lock = mutex.lock().await;
         let vec_tup = lock.clone();
 
@@ -79,7 +79,7 @@ impl Brightness {
             Some(argument) => match argument.as_str() {
                 "percent" | "per" | "p" => Ok(vec_tup[0].1.clone()),
                 "value" | "val" | "v" => Ok(vec_tup[1].1.clone()),
-                incorrect => Err(Box::from(ServerError::IncorrectArgument {
+                incorrect => Err(Arc::from(ServerError::IncorrectArgument {
                     incorrect: incorrect.to_string(),
                     valid: vec!["percent", "value"]
                         .iter()
@@ -87,7 +87,7 @@ impl Brightness {
                         .collect(),
                 })),
             },
-            None => Err(Box::from(ServerError::EmptyArguments)),
+            None => Err(Arc::from(ServerError::EmptyArguments)),
         }
     }
 }
