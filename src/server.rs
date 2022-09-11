@@ -8,66 +8,76 @@ use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, watch, Mutex};
 
 enum ServerMessage {
     Update,
 }
 
-async fn socket_function(
+async fn process_socket_message(
     socket: Arc<Mutex<TcpStream>>,
     vol_mutex: Arc<Mutex<Vec<(String, String)>>>,
     bri_mutex: Arc<Mutex<Vec<(String, String)>>>,
     bat_mutex: Arc<Mutex<Vec<(String, String)>>>,
     mem_mutex: Arc<Mutex<Vec<(String, String)>>>,
     result_mutex: Arc<Mutex<Result<(), Arc<ServerError>>>>,
-    tx: mpsc::Sender<ServerMessage>,
+    server_tx: mpsc::Sender<ServerMessage>,
+    socket_rx: Arc<Mutex<watch::Receiver<String>>>,
 ) {
-    tokio::spawn(async move {
-        let mut buf = [0; 1024];
+    let mut buf = [0; 1024];
 
-        let n = match socket.lock().await.read(&mut buf).await {
-            Ok(n) if n == 0 => {
-                *result_mutex.lock().await = Err(Arc::from(ServerError::SocketDisconnect));
-                return;
-            }
-            Ok(n) => n,
-            Err(e) => {
-                *result_mutex.lock().await = Err(Arc::from(ServerError::SocketRead { e }));
-                return;
-            }
-        };
+    let n = match socket.lock().await.read(&mut buf).await {
+        Ok(n) if n == 0 => {
+            *result_mutex.lock().await = Err(Arc::from(ServerError::SocketDisconnect));
+            return;
+        }
+        Ok(n) => n,
+        Err(e) => {
+            *result_mutex.lock().await = Err(Arc::from(ServerError::SocketRead { e }));
+            return;
+        }
+    };
 
-        let message = match String::from_utf8(Vec::from(&buf[0..n])) {
-            Ok(string) => string,
-            Err(e) => {
-                *result_mutex.lock().await = Err(Arc::from(ServerError::StringConversion {
-                    debug_string: format!("{:?}", &buf[0..n]),
-                    e,
-                }));
-                return;
-            }
-        };
+    let message = match String::from_utf8(Vec::from(&buf[0..n])) {
+        Ok(string) => string,
+        Err(e) => {
+            *result_mutex.lock().await = Err(Arc::from(ServerError::StringConversion {
+                debug_string: format!("{:?}", &buf[0..n]),
+                e,
+            }));
+            return;
+        }
+    };
 
-        let args = message
-            .split_ascii_whitespace()
-            .map(std::string::ToString::to_string)
-            .collect::<Vec<String>>();
+    let args = message
+        .split_ascii_whitespace()
+        .map(std::string::ToString::to_string)
+        .collect::<Vec<String>>();
 
-        let reply = match parse_args(&args, vol_mutex, bri_mutex, bat_mutex, mem_mutex, tx).await {
-            Ok(reply) => reply,
-            Err(e) => {
-                *result_mutex.lock().await = Err(e);
-                return;
-            }
-        };
+    let reply = match parse_args(
+        socket.clone(),
+        &args,
+        vol_mutex,
+        bri_mutex,
+        bat_mutex,
+        mem_mutex,
+        server_tx,
+        socket_rx,
+    )
+    .await
+    {
+        Ok(reply) => reply,
+        Err(e) => {
+            *result_mutex.lock().await = Err(e);
+            return;
+        }
+    };
 
-        if let Some(r) = reply {
-            if let Err(e) = socket.lock().await.write_all(r.as_bytes()).await {
-                *result_mutex.lock().await = Err(Arc::from(ServerError::SocketWrite { e }));
-            }
-        };
-    });
+    if let Some(r) = reply {
+        if let Err(e) = socket.lock().await.write_all(r.as_bytes()).await {
+            *result_mutex.lock().await = Err(Arc::from(ServerError::SocketWrite { e }));
+        }
+    };
 }
 
 async fn socket_loop(
@@ -77,48 +87,53 @@ async fn socket_loop(
     bat_mutex: Arc<Mutex<Vec<(String, String)>>>,
     mem_mutex: Arc<Mutex<Vec<(String, String)>>>,
     result_mutex: Arc<Mutex<Result<(), Arc<ServerError>>>>,
-    tx: mpsc::Sender<ServerMessage>,
+    server_tx: mpsc::Sender<ServerMessage>,
+    socket_rx: Arc<Mutex<watch::Receiver<String>>>,
 ) {
-    tokio::spawn(async move {
-        loop {
-            let socket = match listener.accept().await {
-                Ok((socket, _)) => Arc::from(Mutex::new(socket)),
-                Err(e) => {
-                    *result_mutex.clone().lock().await =
-                        Err(Arc::from(ServerError::AddressInUse { e }));
-                    return;
-                }
-            };
+    loop {
+        let socket = match listener.accept().await {
+            Ok((socket, _)) => Arc::from(Mutex::new(socket)),
+            Err(e) => {
+                *result_mutex.clone().lock().await =
+                    Err(Arc::from(ServerError::AddressInUse { e }));
+                return;
+            }
+        };
 
-            let clone_vol_mutex_1 = vol_mutex.clone();
-            let clone_bri_mutex_1 = bri_mutex.clone();
-            let clone_bat_mutex_1 = bat_mutex.clone();
-            let clone_mem_mutex_1 = mem_mutex.clone();
+        let vol_mutex_1 = vol_mutex.clone();
+        let bri_mutex_1 = bri_mutex.clone();
+        let bat_mutex_1 = bat_mutex.clone();
+        let mem_mutex_1 = mem_mutex.clone();
 
-            let tx_clone_1 = tx.clone();
-            let result_mutex_clone_1 = result_mutex.clone();
+        let server_tx_1 = server_tx.clone();
+        let socket_rx_1 = socket_rx.clone();
+        let result_mutex_clone_1 = result_mutex.clone();
 
-            socket_function(
+        tokio::spawn(async move {
+            process_socket_message(
                 socket.clone(),
-                clone_vol_mutex_1,
-                clone_bri_mutex_1,
-                clone_bat_mutex_1,
-                clone_mem_mutex_1,
+                vol_mutex_1,
+                bri_mutex_1,
+                bat_mutex_1,
+                mem_mutex_1,
                 result_mutex_clone_1,
-                tx_clone_1,
+                server_tx_1,
+                socket_rx_1,
             )
-            .await;
-        }
-    });
+            .await
+        });
+    }
 }
 
 async fn parse_args(
+    socket: Arc<Mutex<TcpStream>>,
     args: &[String],
     vol_mutex: Arc<Mutex<Vec<(String, String)>>>,
     bri_mutex: Arc<Mutex<Vec<(String, String)>>>,
     bat_mutex: Arc<Mutex<Vec<(String, String)>>>,
     mem_mutex: Arc<Mutex<Vec<(String, String)>>>,
-    tx: mpsc::Sender<ServerMessage>,
+    server_tx: mpsc::Sender<ServerMessage>,
+    socket_rx: Arc<Mutex<watch::Receiver<String>>>,
 ) -> Result<Option<String>, Arc<ServerError>> {
     match args.get(0) {
         Some(command) => match command.as_str() {
@@ -154,6 +169,20 @@ async fn parse_args(
                     None => Err(Arc::from(ServerError::EmptyArguments)),
                 }
             }
+            "listen" => {
+                while socket_rx.lock().await.changed().await.is_ok() {
+                    let value = socket_rx.lock().await.borrow().clone();
+
+                    socket
+                        .lock()
+                        .await
+                        .write_all(value.as_bytes())
+                        .await
+                        .unwrap();
+                }
+
+                Ok(None)
+            }
             "update" => {
                 match args.get(1) {
                     Some(argument) => match argument.as_str() {
@@ -176,7 +205,7 @@ async fn parse_args(
 
                 let full_json = get_all_json(vol_mutex, bri_mutex, bat_mutex, mem_mutex).await?;
 
-                if tx.send(ServerMessage::Update).await.is_err() {
+                if server_tx.send(ServerMessage::Update).await.is_err() {
                     return Err(Arc::from(ServerError::ChannelSend { message: full_json }));
                 };
 
@@ -205,9 +234,9 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
         None => return Err(Arc::from(ServerError::RetryError)),
     };
 
-    // Make a channel to listen for updates and send the json
-    let (tx, mut rx) = mpsc::channel(32);
-    let tx_clone_1 = tx.clone();
+    let (server_tx, mut server_rx) = mpsc::channel(32);
+    let (socket_tx, socket_rx) = watch::channel(String::from("Test"));
+    let server_tx_1 = server_tx.clone();
 
     let result_mutex = Arc::from(Mutex::new(Ok::<(), Arc<ServerError>>(())));
     let result_mutex_clone_0 = result_mutex.clone();
@@ -221,8 +250,8 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
                 eprintln!("{e}");
             }
 
-            if tx_clone_1.send(ServerMessage::Update).await.is_err() {
-                eprintln!("Failed to send update message");
+            if let Err(e) = server_tx_1.send(ServerMessage::Update).await {
+                eprintln!("Failed to send update message: {e}");
             }
 
             std::thread::sleep(Duration::from_millis(1500));
@@ -244,18 +273,21 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
     let clone_bat_mutex_1 = bat_mutex.clone();
     let clone_mem_mutex_1 = mem_mutex.clone();
 
-    socket_loop(
-        listener,
-        vol_mutex.clone(),
-        bri_mutex.clone(),
-        bat_mutex.clone(),
-        mem_mutex.clone(),
-        result_mutex.clone(),
-        tx.clone(),
-    )
-    .await;
+    tokio::spawn(async move {
+        socket_loop(
+            listener,
+            vol_mutex.clone(),
+            bri_mutex.clone(),
+            bat_mutex.clone(),
+            mem_mutex.clone(),
+            result_mutex.clone(),
+            server_tx.clone(),
+            Arc::from(Mutex::new(socket_rx)),
+        )
+        .await;
+    });
 
-    while let Some(val) = rx.recv().await {
+    while let Some(val) = server_rx.recv().await {
         match val {
             ServerMessage::Update => {
                 if let Err(e) = Battery::update(&clone_bat_mutex_1).await {
@@ -274,7 +306,7 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
                 )
                 .await
                 {
-                    Ok(json) => println!("{json}"),
+                    Ok(json) => socket_tx.send(format!("{json}")).unwrap(),
                     Err(e) => eprintln!("{e}"),
                 };
             }
