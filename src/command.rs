@@ -4,7 +4,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 
 #[derive(Error, Debug)]
 pub enum ServerError {
@@ -200,5 +200,19 @@ pub async fn socket_write(
     match socket.lock().await.write_all(buf).await {
         Ok(_) => Ok(()),
         Err(e) => Err(Arc::from(ServerError::SocketWrite { e })),
+    }
+}
+
+/// # Errors
+// returns an error if Channel could not send message
+pub async fn mpsc_send<T>(channel: mpsc::Sender<T>, message: T) -> Result<(), Arc<ServerError>>
+where
+    T: std::fmt::Display + Clone + Send,
+{
+    let msg = message.to_string();
+
+    match channel.send(message).await {
+        Ok(_) => Ok(()),
+        Err(_) => Err(Arc::from(ServerError::ChannelSend { message: msg })),
     }
 }
