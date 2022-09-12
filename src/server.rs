@@ -12,8 +12,10 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, watch, Mutex};
 
+type ServerResult<T> = Result<T, Arc<ServerError>>;
+
 #[derive(Clone)]
-enum ServerMessage {
+pub enum ChannelCommand {
     UpdateAll,
     GetVol { args: Vec<String> },
     UpdateVol,
@@ -25,7 +27,7 @@ enum ServerMessage {
     UpdateMem,
 }
 
-impl std::fmt::Display for ServerMessage {
+impl std::fmt::Display for ChannelCommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -71,8 +73,8 @@ async fn process_socket_message(
 async fn socket_loop(
     listener: TcpListener,
     error_tx: mpsc::Sender<Arc<ServerError>>,
-    server_tx: mpsc::Sender<ServerMessage>,
-    server_response_rx: Arc<Mutex<watch::Receiver<Result<String, Arc<ServerError>>>>>,
+    server_tx: mpsc::Sender<ChannelCommand>,
+    server_response_rx: Arc<Mutex<watch::Receiver<ServerResult<String>>>>,
     listener_rx: Arc<Mutex<watch::Receiver<String>>>,
 ) {
     loop {
@@ -137,10 +139,10 @@ async fn parse_args(
     socket: Arc<Mutex<TcpStream>>,
     args: &[String],
     error_tx: mpsc::Sender<Arc<ServerError>>,
-    server_tx: mpsc::Sender<ServerMessage>,
-    server_response_rx: Arc<Mutex<watch::Receiver<Result<String, Arc<ServerError>>>>>,
+    server_tx: mpsc::Sender<ChannelCommand>,
+    server_response_rx: Arc<Mutex<watch::Receiver<ServerResult<String>>>>,
     listener_rx: Arc<Mutex<watch::Receiver<String>>>,
-) -> Result<Option<String>, Arc<ServerError>> {
+) -> ServerResult<Option<String>> {
     match args.get(0) {
         Some(command) => match command.as_str() {
             "get" => {
@@ -155,7 +157,7 @@ async fn parse_args(
                         "volume" | "vol" => {
                             if let Err(e) = mpsc_send(
                                 server_tx,
-                                ServerMessage::GetVol {
+                                ChannelCommand::GetVol {
                                     args: parseable_args.to_vec(),
                                 },
                             )
@@ -172,7 +174,7 @@ async fn parse_args(
                                 Ok(Some(value))
                             } else {
                                 Err(Arc::from(ServerError::ChannelSend {
-                                    message: ServerMessage::GetVol {
+                                    message: ChannelCommand::GetVol {
                                         args: parseable_args.to_vec(),
                                     }
                                     .to_string(),
@@ -182,7 +184,7 @@ async fn parse_args(
                         "brightness" | "bri" => {
                             if let Err(e) = mpsc_send(
                                 server_tx,
-                                ServerMessage::GetBri {
+                                ChannelCommand::GetBri {
                                     args: parseable_args.to_vec(),
                                 },
                             )
@@ -199,7 +201,7 @@ async fn parse_args(
                                 Ok(Some(value))
                             } else {
                                 Err(Arc::from(ServerError::ChannelSend {
-                                    message: ServerMessage::GetBri {
+                                    message: ChannelCommand::GetBri {
                                         args: parseable_args.to_vec(),
                                     }
                                     .to_string(),
@@ -209,7 +211,7 @@ async fn parse_args(
                         "battery" | "bat" => {
                             if let Err(e) = mpsc_send(
                                 server_tx,
-                                ServerMessage::GetBat {
+                                ChannelCommand::GetBat {
                                     args: parseable_args.to_vec(),
                                 },
                             )
@@ -226,7 +228,7 @@ async fn parse_args(
                                 Ok(Some(value))
                             } else {
                                 Err(Arc::from(ServerError::ChannelSend {
-                                    message: ServerMessage::GetBat {
+                                    message: ChannelCommand::GetBat {
                                         args: parseable_args.to_vec(),
                                     }
                                     .to_string(),
@@ -236,7 +238,7 @@ async fn parse_args(
                         "memory" | "mem" => {
                             if let Err(e) = mpsc_send(
                                 server_tx,
-                                ServerMessage::GetMem {
+                                ChannelCommand::GetMem {
                                     args: parseable_args.to_vec(),
                                 },
                             )
@@ -253,7 +255,7 @@ async fn parse_args(
                                 Ok(Some(value))
                             } else {
                                 Err(Arc::from(ServerError::ChannelSend {
-                                    message: ServerMessage::GetMem {
+                                    message: ChannelCommand::GetMem {
                                         args: parseable_args.to_vec(),
                                     }
                                     .to_string(),
@@ -289,7 +291,7 @@ async fn parse_args(
                     Some(argument) => match argument.as_str() {
                         "volume" | "vol" => {
                             if let Err(e) =
-                                mpsc_send(server_tx.clone(), ServerMessage::UpdateVol).await
+                                mpsc_send(server_tx.clone(), ChannelCommand::UpdateVol).await
                             {
                                 if let Err(e) = mpsc_send(error_tx, e).await {
                                     eprintln!("Could not send error via channel: {e}");
@@ -298,7 +300,7 @@ async fn parse_args(
                         }
                         "brightness" | "bri" => {
                             if let Err(e) =
-                                mpsc_send(server_tx.clone(), ServerMessage::UpdateBri).await
+                                mpsc_send(server_tx.clone(), ChannelCommand::UpdateBri).await
                             {
                                 if let Err(e) = mpsc_send(error_tx, e).await {
                                     eprintln!("Could not send error via channel: {e}");
@@ -307,7 +309,7 @@ async fn parse_args(
                         }
                         "battery" | "bat" => {
                             if let Err(e) =
-                                mpsc_send(server_tx.clone(), ServerMessage::UpdateBat).await
+                                mpsc_send(server_tx.clone(), ChannelCommand::UpdateBat).await
                             {
                                 if let Err(e) = mpsc_send(error_tx, e).await {
                                     eprintln!("Could not send error via channel: {e}");
@@ -316,7 +318,7 @@ async fn parse_args(
                         }
                         "memory" | "mem" => {
                             if let Err(e) =
-                                mpsc_send(server_tx.clone(), ServerMessage::UpdateMem).await
+                                mpsc_send(server_tx.clone(), ChannelCommand::UpdateMem).await
                             {
                                 if let Err(e) = mpsc_send(error_tx, e).await {
                                     eprintln!("Could not send error via channel: {e}");
@@ -336,9 +338,9 @@ async fn parse_args(
                     None => {}
                 };
 
-                if server_tx.send(ServerMessage::UpdateAll).await.is_err() {
+                if server_tx.send(ChannelCommand::UpdateAll).await.is_err() {
                     return Err(Arc::from(ServerError::ChannelSend {
-                        message: ServerMessage::UpdateAll.to_string(),
+                        message: ChannelCommand::UpdateAll.to_string(),
                     }));
                 };
 
@@ -356,65 +358,19 @@ async fn parse_args(
     }
 }
 
-pub async fn start() -> Result<(), Arc<ServerError>> {
-    let listener = match call_and_retry_async(|| async {
-        TcpListener::bind(crate::IP_AND_PORT).await
-    })
-    .await
-    {
-        Some(Ok(handle)) => handle,
-        Some(Err(e)) => return Err(Arc::from(ServerError::AddressInUse { e })),
-        None => return Err(Arc::from(ServerError::RetryError)),
-    };
-
-    let (server_tx, mut server_rx) = mpsc::channel(32);
-    let (server_response_tx, server_response_rx) = watch::channel(Ok(String::from("")));
-    let (listener_tx, listener_rx) = watch::channel(String::from(""));
-    let server_tx_1 = server_tx.clone();
-
-    let (error_tx, mut error_rx) = mpsc::channel::<Arc<ServerError>>(32);
-    let error_tx_clone = error_tx.clone();
-
-    tokio::spawn(async move {
-        while let Some(value) = error_rx.recv().await {
-            eprintln!("{value}");
-        }
-    });
-
-    tokio::spawn(async move {
-        loop {
-            if let Err(e) = mpsc_send(server_tx_1.clone(), ServerMessage::UpdateAll).await {
-                eprintln!("Failed to send update message: {e}");
-            }
-
-            std::thread::sleep(std::time::Duration::from_millis(1500));
-        }
-    });
-
-    let vol_mutex = Arc::new(Mutex::new(match call_and_retry(Volume::get_json_tuple) {
-        Some(Ok(vol_out)) => vol_out,
-        Some(Err(e)) => return Err(e),
-        None => return Err(Arc::from(ServerError::RetryError)),
-    }));
-
-    let bri_mutex = Arc::new(Mutex::new(Brightness::get_json_tuple()?));
-    let bat_mutex = Arc::new(Mutex::new(Battery::get_json_tuple()?));
-    let mem_mutex = Arc::new(Mutex::new(Memory::get_json_tuple()?));
-
-    tokio::spawn(async move {
-        socket_loop(
-            listener,
-            error_tx_clone.clone(),
-            server_tx.clone(),
-            Arc::from(Mutex::new(server_response_rx)),
-            Arc::from(Mutex::new(listener_rx)),
-        )
-        .await;
-    });
-
+pub async fn start_channel(
+    vol_mutex: Arc<Mutex<Vec<(String, String)>>>,
+    bri_mutex: Arc<Mutex<Vec<(String, String)>>>,
+    bat_mutex: Arc<Mutex<Vec<(String, String)>>>,
+    mem_mutex: Arc<Mutex<Vec<(String, String)>>>,
+    error_tx: mpsc::Sender<Arc<ServerError>>,
+    server_rx: &mut mpsc::Receiver<ChannelCommand>,
+    server_response_tx: watch::Sender<ServerResult<String>>,
+    listener_tx: watch::Sender<String>,
+) {
     while let Some(val) = server_rx.recv().await {
         match val {
-            ServerMessage::UpdateAll => {
+            ChannelCommand::UpdateAll => {
                 if let Err(e) = Battery::update(&bat_mutex).await {
                     eprintln!("{e}");
                 }
@@ -444,7 +400,7 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
                     Err(e) => eprintln!("{e}"),
                 };
             }
-            ServerMessage::GetVol { args } => {
+            ChannelCommand::GetVol { args } => {
                 let volume = Volume::parse_args(&vol_mutex.clone(), args.as_slice()).await;
 
                 if server_response_tx.send(volume.clone()).is_err() {
@@ -458,8 +414,14 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
                     }
                 }
             }
-            ServerMessage::UpdateVol => Volume::update(&vol_mutex).await?,
-            ServerMessage::GetBri { args } => {
+            ChannelCommand::UpdateVol => {
+                if let Err(e) = Volume::update(&vol_mutex).await {
+                    if let Err(e) = error_tx.send(e).await {
+                        eprintln!("Could not send error via channel: {e}");
+                    }
+                }
+            }
+            ChannelCommand::GetBri { args } => {
                 let brightness = Brightness::parse_args(&bri_mutex.clone(), args.as_slice()).await;
 
                 if server_response_tx.send(brightness.clone()).is_err() {
@@ -473,8 +435,14 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
                     }
                 }
             }
-            ServerMessage::UpdateBri => Brightness::update(&bri_mutex).await?,
-            ServerMessage::GetBat { args } => {
+            ChannelCommand::UpdateBri => {
+                if let Err(e) = Brightness::update(&bri_mutex).await {
+                    if let Err(e) = error_tx.send(e).await {
+                        eprintln!("Could not send error via channel: {e}");
+                    }
+                }
+            }
+            ChannelCommand::GetBat { args } => {
                 let battery = Battery::parse_args(&bat_mutex.clone(), args.as_slice()).await;
 
                 if server_response_tx.send(battery.clone()).is_err() {
@@ -488,8 +456,14 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
                     }
                 }
             }
-            ServerMessage::UpdateBat => Battery::update(&bat_mutex).await?,
-            ServerMessage::GetMem { args } => {
+            ChannelCommand::UpdateBat => {
+                if let Err(e) = Battery::update(&bat_mutex).await {
+                    if let Err(e) = error_tx.send(e).await {
+                        eprintln!("Could not send error via channel: {e}");
+                    }
+                }
+            }
+            ChannelCommand::GetMem { args } => {
                 let memory = Memory::parse_args(&mem_mutex.clone(), args.as_slice()).await;
 
                 if server_response_tx.send(memory.clone()).is_err() {
@@ -503,9 +477,84 @@ pub async fn start() -> Result<(), Arc<ServerError>> {
                     }
                 }
             }
-            ServerMessage::UpdateMem => Memory::update(&mem_mutex).await?,
+            ChannelCommand::UpdateMem => {
+                if let Err(e) = Memory::update(&mem_mutex).await {
+                    if let Err(e) = error_tx.send(e).await {
+                        eprintln!("Could not send error via channel: {e}");
+                    }
+                }
+            }
         }
     }
+}
+
+pub async fn start() -> ServerResult<()> {
+    let listener = match call_and_retry_async(|| async {
+        TcpListener::bind(crate::IP_AND_PORT).await
+    })
+    .await
+    {
+        Some(Ok(handle)) => handle,
+        Some(Err(e)) => return Err(Arc::from(ServerError::AddressInUse { e })),
+        None => return Err(Arc::from(ServerError::RetryError)),
+    };
+
+    let (server_tx, mut server_rx) = mpsc::channel(32);
+    let (server_response_tx, server_response_rx) = watch::channel(Ok(String::from("")));
+    let (listener_tx, listener_rx) = watch::channel(String::from(""));
+    let server_tx_1 = server_tx.clone();
+
+    let (error_tx, mut error_rx) = mpsc::channel::<Arc<ServerError>>(32);
+    let error_tx_clone = error_tx.clone();
+
+    tokio::spawn(async move {
+        while let Some(value) = error_rx.recv().await {
+            eprintln!("{value}");
+        }
+    });
+
+    tokio::spawn(async move {
+        loop {
+            if let Err(e) = mpsc_send(server_tx_1.clone(), ChannelCommand::UpdateAll).await {
+                eprintln!("Failed to send update message: {e}");
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+        }
+    });
+
+    let vol_mutex = Arc::new(Mutex::new(match call_and_retry(Volume::get_json_tuple) {
+        Some(Ok(vol_out)) => vol_out,
+        Some(Err(e)) => return Err(e),
+        None => return Err(Arc::from(ServerError::RetryError)),
+    }));
+
+    let bri_mutex = Arc::new(Mutex::new(Brightness::get_json_tuple()?));
+    let bat_mutex = Arc::new(Mutex::new(Battery::get_json_tuple()?));
+    let mem_mutex = Arc::new(Mutex::new(Memory::get_json_tuple()?));
+
+    tokio::spawn(async move {
+        socket_loop(
+            listener,
+            error_tx_clone.clone(),
+            server_tx.clone(),
+            Arc::from(Mutex::new(server_response_rx)),
+            Arc::from(Mutex::new(listener_rx)),
+        )
+        .await;
+    });
+
+    start_channel(
+        vol_mutex,
+        bri_mutex,
+        bat_mutex,
+        mem_mutex,
+        error_tx,
+        &mut server_rx,
+        server_response_tx,
+        listener_tx,
+    )
+    .await;
 
     Ok(())
 }
