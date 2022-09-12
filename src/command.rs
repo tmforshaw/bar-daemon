@@ -1,6 +1,8 @@
 use std::process::Command;
 use std::sync::Arc;
+
 use thiserror::Error;
+use tokio::sync::Mutex;
 
 #[derive(Error, Debug)]
 pub enum ServerError {
@@ -60,9 +62,6 @@ pub enum ServerError {
     ChannelSend { message: String },
 }
 
-// unsafe impl Send for ServerError {}
-// unsafe impl Sync for ServerError {}
-
 /// # Errors
 /// Returns an error if the command fails to run
 /// Returns an error if the command's output can't be parsed into a string
@@ -81,6 +80,38 @@ pub fn run(command_name: &str, args: &[&str]) -> Result<String, ServerError> {
             e,
         }),
     }
+}
+
+fn get_json_from_tuple(vec_tup: &[(String, String)]) -> String {
+    let joined_string = vec_tup
+        .iter()
+        .map(|t| format!("\"{}\": \"{}\"", t.0, t.1))
+        .collect::<Vec<String>>()
+        .join(", ");
+
+    format!("{{{}}}", joined_string)
+}
+
+/// # Errors
+/// Returns an error if any values cannot be found in each mutex
+pub async fn get_all_json(
+    vol_mutex: Arc<Mutex<Vec<(String, String)>>>,
+    bri_mutex: Arc<Mutex<Vec<(String, String)>>>,
+    bat_mutex: Arc<Mutex<Vec<(String, String)>>>,
+    mem_mutex: Arc<Mutex<Vec<(String, String)>>>,
+) -> Result<String, Box<ServerError>> {
+    let volume_tup = vol_mutex.lock().await.clone();
+    let brightness_tup = bri_mutex.lock().await.clone();
+    let battery_tup = bat_mutex.lock().await.clone();
+    let memory_tup = mem_mutex.lock().await.clone();
+
+    Ok(format!(
+        "{{\"volume\": {}, \"brightness\": {}, \"battery\": {}, \"memory\": {}}}",
+        get_json_from_tuple(&volume_tup),
+        get_json_from_tuple(&brightness_tup),
+        get_json_from_tuple(&battery_tup),
+        get_json_from_tuple(&memory_tup),
+    ))
 }
 
 pub fn call_and_retry<O, E>(func: impl Fn() -> Result<O, E>) -> Option<Result<O, E>>
