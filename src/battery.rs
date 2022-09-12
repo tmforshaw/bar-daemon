@@ -27,7 +27,12 @@ impl Battery {
 
     fn get_percent(battery_command: &str) -> Result<u32, Arc<ServerError>> {
         match battery_command.split_whitespace().nth(3) {
-            Some(percentage) => match percentage.trim().trim_end_matches("%,").parse() {
+            Some(percentage) => match percentage
+                .trim()
+                .trim_end_matches(',')
+                .trim_end_matches('%')
+                .parse()
+            {
                 Ok(integer) => Ok(integer),
                 Err(e) => Err(Arc::from(ServerError::StringParse {
                     debug_string: percentage.to_string(),

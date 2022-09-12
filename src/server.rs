@@ -15,7 +15,7 @@ use tokio::sync::{mpsc, watch, Mutex};
 type ServerResult<T> = Result<T, Arc<ServerError>>;
 
 #[derive(Clone)]
-pub enum ChannelCommand {
+enum ChannelCommand {
     UpdateAll,
     GetVol { args: Vec<String> },
     UpdateVol,
@@ -281,6 +281,9 @@ async fn parse_args(
                         if let Err(e) = mpsc_send(error_tx.clone(), e).await {
                             eprintln!("Could not send error via channel: {e}");
                         }
+
+                        // Exit out of loop when socket disconnects
+                        return Ok(None);
                     }
                 }
 
@@ -358,25 +361,92 @@ async fn parse_args(
     }
 }
 
-pub async fn start_channel(
-    vol_mutex: Arc<Mutex<Vec<(String, String)>>>,
-    bri_mutex: Arc<Mutex<Vec<(String, String)>>>,
-    bat_mutex: Arc<Mutex<Vec<(String, String)>>>,
-    mem_mutex: Arc<Mutex<Vec<(String, String)>>>,
-    error_tx: mpsc::Sender<Arc<ServerError>>,
-    server_rx: &mut mpsc::Receiver<ChannelCommand>,
-    server_response_tx: watch::Sender<ServerResult<String>>,
-    listener_tx: watch::Sender<String>,
-) {
+pub async fn start() -> ServerResult<()> {
+    let listener = match call_and_retry_async(|| async {
+        TcpListener::bind(crate::IP_AND_PORT).await
+    })
+    .await
+    {
+        Some(Ok(handle)) => handle,
+        Some(Err(e)) => return Err(Arc::from(ServerError::AddressInUse { e })),
+        None => return Err(Arc::from(ServerError::RetryError)),
+    };
+
+    let (server_tx, mut server_rx) = mpsc::channel(32);
+    let (server_response_tx, server_response_rx) = watch::channel(Ok(String::from("")));
+    let (listener_tx, listener_rx) = watch::channel(String::from(""));
+
+    let (error_tx, mut error_rx) = mpsc::channel::<Arc<ServerError>>(32);
+
+    tokio::spawn(async move {
+        while let Some(value) = error_rx.recv().await {
+            eprintln!("{value}");
+        }
+    });
+
+    let server_tx_1 = server_tx.clone();
+    tokio::spawn(async move {
+        loop {
+            if let Err(e) = mpsc_send(server_tx_1.clone(), ChannelCommand::UpdateAll).await {
+                eprintln!("Failed to send update message: {e}");
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+        }
+    });
+
+    let vol_mutex = Arc::new(Mutex::new(match call_and_retry(Volume::get_json_tuple) {
+        Some(Ok(out)) => out,
+        Some(Err(e)) => return Err(e),
+        None => return Err(Arc::from(ServerError::RetryError)),
+    }));
+
+    let bri_mutex = Arc::new(Mutex::new(
+        match call_and_retry(Brightness::get_json_tuple) {
+            Some(Ok(out)) => out,
+            Some(Err(e)) => return Err(e),
+            None => return Err(Arc::from(ServerError::RetryError)),
+        },
+    ));
+
+    let bat_mutex = Arc::new(Mutex::new(match call_and_retry(Battery::get_json_tuple) {
+        Some(Ok(out)) => out,
+        Some(Err(e)) => return Err(e),
+        None => return Err(Arc::from(ServerError::RetryError)),
+    }));
+
+    let mem_mutex = Arc::new(Mutex::new(match call_and_retry(Memory::get_json_tuple) {
+        Some(Ok(out)) => out,
+        Some(Err(e)) => return Err(e),
+        None => return Err(Arc::from(ServerError::RetryError)),
+    }));
+
+    let error_tx_1 = error_tx.clone();
+
+    tokio::spawn(async move {
+        socket_loop(
+            listener,
+            error_tx_1,
+            server_tx.clone(),
+            Arc::from(Mutex::new(server_response_rx)),
+            Arc::from(Mutex::new(listener_rx)),
+        )
+        .await;
+    });
+
     while let Some(val) = server_rx.recv().await {
         match val {
             ChannelCommand::UpdateAll => {
                 if let Err(e) = Battery::update(&bat_mutex).await {
-                    eprintln!("{e}");
+                    if let Err(e) = error_tx.send(e).await {
+                        eprintln!("Could not send error via channel: {e}");
+                    }
                 }
 
                 if let Err(e) = Memory::update(&mem_mutex).await {
-                    eprintln!("{e}");
+                    if let Err(e) = error_tx.send(e).await {
+                        eprintln!("Could not send error via channel: {e}");
+                    }
                 }
 
                 match get_all_json(
@@ -486,75 +556,6 @@ pub async fn start_channel(
             }
         }
     }
-}
-
-pub async fn start() -> ServerResult<()> {
-    let listener = match call_and_retry_async(|| async {
-        TcpListener::bind(crate::IP_AND_PORT).await
-    })
-    .await
-    {
-        Some(Ok(handle)) => handle,
-        Some(Err(e)) => return Err(Arc::from(ServerError::AddressInUse { e })),
-        None => return Err(Arc::from(ServerError::RetryError)),
-    };
-
-    let (server_tx, mut server_rx) = mpsc::channel(32);
-    let (server_response_tx, server_response_rx) = watch::channel(Ok(String::from("")));
-    let (listener_tx, listener_rx) = watch::channel(String::from(""));
-    let server_tx_1 = server_tx.clone();
-
-    let (error_tx, mut error_rx) = mpsc::channel::<Arc<ServerError>>(32);
-    let error_tx_clone = error_tx.clone();
-
-    tokio::spawn(async move {
-        while let Some(value) = error_rx.recv().await {
-            eprintln!("{value}");
-        }
-    });
-
-    tokio::spawn(async move {
-        loop {
-            if let Err(e) = mpsc_send(server_tx_1.clone(), ChannelCommand::UpdateAll).await {
-                eprintln!("Failed to send update message: {e}");
-            }
-
-            std::thread::sleep(std::time::Duration::from_millis(1500));
-        }
-    });
-
-    let vol_mutex = Arc::new(Mutex::new(match call_and_retry(Volume::get_json_tuple) {
-        Some(Ok(vol_out)) => vol_out,
-        Some(Err(e)) => return Err(e),
-        None => return Err(Arc::from(ServerError::RetryError)),
-    }));
-
-    let bri_mutex = Arc::new(Mutex::new(Brightness::get_json_tuple()?));
-    let bat_mutex = Arc::new(Mutex::new(Battery::get_json_tuple()?));
-    let mem_mutex = Arc::new(Mutex::new(Memory::get_json_tuple()?));
-
-    tokio::spawn(async move {
-        socket_loop(
-            listener,
-            error_tx_clone.clone(),
-            server_tx.clone(),
-            Arc::from(Mutex::new(server_response_rx)),
-            Arc::from(Mutex::new(listener_rx)),
-        )
-        .await;
-    });
-
-    start_channel(
-        vol_mutex,
-        bri_mutex,
-        bat_mutex,
-        mem_mutex,
-        error_tx,
-        &mut server_rx,
-        server_response_tx,
-        listener_tx,
-    )
-    .await;
 
     Ok(())
 }
