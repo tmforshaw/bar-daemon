@@ -1,12 +1,13 @@
 use crate::battery::Battery;
 use crate::brightness::Brightness;
-use crate::command::{call_and_retry, call_and_retry_async, get_all_json, ServerError};
+use crate::command::{
+    call_and_retry, call_and_retry_async, get_all_json, socket_read, socket_write, ServerError,
+};
 use crate::memory::Memory;
 use crate::volume::Volume;
 
 use std::sync::Arc;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, watch, Mutex};
 
@@ -28,91 +29,25 @@ impl std::fmt::Display for ServerMessage {
 
 async fn process_socket_message(
     socket: Arc<Mutex<TcpStream>>,
-    vol_mutex: Arc<Mutex<Vec<(String, String)>>>,
-    bri_mutex: Arc<Mutex<Vec<(String, String)>>>,
-    bat_mutex: Arc<Mutex<Vec<(String, String)>>>,
-    mem_mutex: Arc<Mutex<Vec<(String, String)>>>,
     error_tx: mpsc::Sender<Arc<ServerError>>,
-    server_tx: mpsc::Sender<ServerMessage>,
-    socket_rx: Arc<Mutex<watch::Receiver<String>>>,
-) {
-    let mut buf = [0; 1024];
-
-    let n = match socket.lock().await.read(&mut buf).await {
-        Ok(n) if n == 0 => {
-            if let Err(e) = error_tx
-                .send(Arc::from(ServerError::SocketDisconnect))
-                .await
-            {
-                eprintln!("Could not send error via channel: {e}");
-            }
-            return;
-        }
-        Ok(n) => n,
+) -> Option<Vec<String>> {
+    let message = match socket_read(socket).await {
+        Ok(m) => m,
         Err(e) => {
-            if let Err(e) = error_tx
-                .send(Arc::from(ServerError::SocketRead { e }))
-                .await
-            {
+            if error_tx.send(e.clone()).await.is_err() {
                 eprintln!("Could not send error via channel: {e}");
             }
-            return;
+
+            return None;
         }
     };
 
-    let message = match String::from_utf8(Vec::from(&buf[0..n])) {
-        Ok(string) => string,
-        Err(e) => {
-            if let Err(e) = error_tx
-                .send(Arc::from(ServerError::StringConversion {
-                    debug_string: format!("{:?}", &buf[0..n]),
-                    e,
-                }))
-                .await
-            {
-                eprintln!("Could not send error via channel: {e}");
-            }
-            return;
-        }
-    };
-
-    let args = message
-        .split_ascii_whitespace()
-        .map(std::string::ToString::to_string)
-        .collect::<Vec<String>>();
-
-    let reply = match parse_args(
-        socket.clone(),
-        &args,
-        vol_mutex,
-        bri_mutex,
-        bat_mutex,
-        mem_mutex,
-        error_tx.clone(),
-        server_tx,
-        socket_rx,
+    Some(
+        message
+            .split_ascii_whitespace()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<String>>(),
     )
-    .await
-    {
-        Ok(reply) => reply,
-        Err(e) => {
-            if let Err(e) = error_tx.send(e).await {
-                eprintln!("Could not send error via channel: {e}");
-            }
-            return;
-        }
-    };
-
-    if let Some(r) = reply {
-        if let Err(e) = socket.lock().await.write_all(r.as_bytes()).await {
-            if let Err(e) = error_tx
-                .send(Arc::from(ServerError::SocketWrite { e }))
-                .await
-            {
-                eprintln!("Could not send error via channel: {e}");
-            }
-        }
-    };
 }
 
 async fn socket_loop(
@@ -130,6 +65,7 @@ async fn socket_loop(
             Ok((socket, _)) => Arc::from(Mutex::new(socket)),
             Err(e) => {
                 if let Err(e) = error_tx
+                    .clone()
                     .send(Arc::from(ServerError::AddressInUse { e }))
                     .await
                 {
@@ -149,17 +85,40 @@ async fn socket_loop(
         let error_tx_1 = error_tx.clone();
 
         tokio::spawn(async move {
-            process_socket_message(
+            let args = match process_socket_message(socket.clone(), error_tx_1.clone()).await {
+                Some(args) => args,
+                None => return,
+            };
+
+            let reply = match parse_args(
                 socket.clone(),
+                &args,
                 vol_mutex_1,
                 bri_mutex_1,
                 bat_mutex_1,
                 mem_mutex_1,
-                error_tx_1,
+                error_tx_1.clone(),
                 server_tx_1,
                 socket_rx_1,
             )
-            .await;
+            .await
+            {
+                Ok(reply) => reply,
+                Err(e) => {
+                    if let Err(e) = error_tx_1.send(e).await {
+                        eprintln!("Could not send error via channel: {e}");
+                    }
+                    return;
+                }
+            };
+
+            if let Some(r) = reply {
+                if let Err(e) = socket_write(socket, r.as_bytes()).await {
+                    if let Err(e) = error_tx_1.send(e).await {
+                        eprintln!("Could not send error via channel: {e}");
+                    }
+                }
+            };
         });
     }
 }
@@ -213,17 +172,8 @@ async fn parse_args(
                 while socket_rx.lock().await.changed().await.is_ok() {
                     let value = socket_rx.lock().await.borrow().clone();
 
-                    if socket
-                        .lock()
-                        .await
-                        .write_all(value.as_bytes())
-                        .await
-                        .is_err()
-                    {
-                        if let Err(e) = error_tx
-                            .send(Arc::from(ServerError::ChannelSend { message: value }))
-                            .await
-                        {
+                    if let Err(e) = socket_write(socket.clone(), value.as_bytes()).await {
+                        if let Err(e) = error_tx.send(e).await {
                             eprintln!("Could not send error via channel: {e}");
                         }
                     }

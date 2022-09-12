@@ -2,6 +2,8 @@ use std::process::Command;
 use std::sync::Arc;
 
 use thiserror::Error;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 
 #[derive(Error, Debug)]
@@ -165,4 +167,38 @@ where
     }
 
     output
+}
+
+/// # Errors
+/// Returns error when socket disconnects
+/// Returns error when socket cannot be read
+/// Returns error when string cannot be created from value
+pub async fn socket_read(socket: Arc<Mutex<TcpStream>>) -> Result<String, Arc<ServerError>> {
+    let mut buf = [0; 1024];
+
+    let n = match socket.lock().await.read(&mut buf).await {
+        Ok(n) if n == 0 => return Err(Arc::from(ServerError::SocketDisconnect)),
+        Ok(n) => n,
+        Err(e) => return Err(Arc::from(ServerError::SocketRead { e })),
+    };
+
+    match String::from_utf8(Vec::from(&buf[0..n])) {
+        Ok(string) => Ok(string),
+        Err(e) => Err(Arc::from(ServerError::StringConversion {
+            debug_string: format!("{:?}", &buf[0..n]),
+            e,
+        })),
+    }
+}
+
+/// # Errors
+/// Returns error when socket cannot be written to
+pub async fn socket_write(
+    socket: Arc<Mutex<TcpStream>>,
+    buf: &[u8],
+) -> Result<(), Arc<ServerError>> {
+    match socket.lock().await.write_all(buf).await {
+        Ok(_) => Ok(()),
+        Err(e) => Err(Arc::from(ServerError::SocketWrite { e })),
+    }
 }

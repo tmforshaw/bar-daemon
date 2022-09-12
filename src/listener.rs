@@ -1,43 +1,22 @@
-use crate::command::{call_and_retry_async, ServerError};
+use crate::command::{call_and_retry_async, socket_read, socket_write, ServerError};
 use std::sync::Arc;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tokio::sync::Mutex;
 
 pub async fn start() -> Result<(), Arc<ServerError>> {
-    let mut stream =
+    let stream =
         match call_and_retry_async(|| async { TcpStream::connect(crate::IP_AND_PORT).await }).await
         {
-            Some(Ok(stream)) => stream,
+            Some(Ok(stream)) => Arc::from(Mutex::new(stream)),
             Some(Err(e)) => return Err(Arc::from(ServerError::AddressInUse { e })),
             None => return Err(Arc::from(ServerError::RetryError)),
         };
 
-    if let Err(e) = stream.write_all(b"listen").await {
-        return Err(Arc::from(ServerError::SocketWrite { e }));
-    }
+    socket_write(stream.clone(), b"listen").await?;
 
     loop {
-        let mut buf = [0; 1024];
-
-        let n = match stream.read(&mut buf).await {
-            Ok(n) if n == 0 => return Ok(()),
-            Ok(n) => n,
-            Err(e) => {
-                return Err(Arc::from(ServerError::SocketRead { e }));
-            }
-        };
-
-        let message = match String::from_utf8(Vec::from(&buf[0..n])) {
-            Ok(string) => string,
-            Err(e) => {
-                return Err(Arc::from(ServerError::StringConversion {
-                    debug_string: format!("{:?}", &buf[0..n]),
-                    e,
-                }));
-            }
-        };
-
+        let message = socket_read(stream.clone()).await?;
         println!("{message}");
     }
 }
