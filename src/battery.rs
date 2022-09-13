@@ -85,6 +85,20 @@ impl Battery {
         }
     }
 
+    fn get_icon(percent: u32, state: &BatteryState) -> String {
+        format!(
+            "{}/status/battery-level-{}{}{}",
+            crate::ICON_THEME_PATH,
+            percent / 10 * 10,
+            match state {
+                BatteryState::Charging => "-charging",
+                BatteryState::Discharging => "",
+                BatteryState::FullyCharged => "-charged",
+            },
+            crate::ICON_EXT
+        )
+    }
+
     pub fn notify(
         prev_percentage: String,
         current_percentage: String,
@@ -154,11 +168,13 @@ impl Battery {
         let percent = Self::get_percent(&battery_command)?;
         let time = Self::get_time(&battery_command)?;
         let state = Self::get_state(&battery_command)?;
+        let icon = Self::get_icon(percent, &state);
 
         Ok(vec![
             ("percent".to_string(), percent.to_string()),
             ("time".to_string(), time),
             ("state".to_string(), BAT_STATES[state as usize].to_string()),
+            ("icon".to_string(), icon),
         ])
     }
 
@@ -174,9 +190,10 @@ impl Battery {
                 "percent" | "per" | "p" => Ok(vec_tup[0].1.clone()),
                 "time" | "t" => Ok(vec_tup[1].1.clone()),
                 "state" | "s" => Ok(vec_tup[2].1.clone()),
+                "icon" | "i" => Ok(vec_tup[3].1.clone()),
                 incorrect => Err(Arc::from(ServerError::IncorrectArgument {
                     incorrect: incorrect.to_string(),
-                    valid: ["percent", "time", "state"]
+                    valid: ["percent", "time", "state", "icon"]
                         .iter()
                         .map(std::string::ToString::to_string)
                         .collect(),

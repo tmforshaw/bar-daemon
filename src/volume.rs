@@ -54,6 +54,37 @@ impl Volume {
         }
     }
 
+    fn get_state() -> Result<bool, Arc<ServerError>> {
+        let mute_command = command::run("pactl", &["get-sink-mute", "@DEFAULT_SINK@"])?;
+
+        match mute_command.split_whitespace().nth(1) {
+            Some(mute_val) => Ok(mute_val == "yes"),
+            None => Err(Arc::from(ServerError::NotInOutput {
+                looking_for: "mute state".to_string(),
+                output: mute_command,
+            })),
+        }
+    }
+
+    fn get_icon(percent: u32, mute_state: bool) -> String {
+        format!(
+            "{}/status/audio-volume-{}{}",
+            crate::ICON_THEME_PATH,
+            if mute_state {
+                "muted"
+            } else {
+                match percent {
+                    0 => "muted",
+                    1..=33 => "low",
+                    34..=67 => "medium",
+                    68..=100 => "high",
+                    101.. => "overamplified",
+                }
+            },
+            crate::ICON_EXT
+        )
+    }
+
     pub async fn update(mutex: &Arc<Mutex<Vec<(String, String)>>>) -> Result<(), Arc<ServerError>> {
         let mut lock = mutex.lock().await;
         *lock = Self::get_json_tuple()?;
@@ -65,10 +96,14 @@ impl Volume {
         let volume_command = Self::get()?;
         let percent = Self::get_percent(&volume_command)?;
         let decibel = Self::get_decibel(&volume_command)?;
+        let state = Self::get_state()?;
+        let icon = Self::get_icon(percent, state);
 
         Ok(vec![
             ("percent".to_string(), percent.to_string()),
             ("decibel".to_string(), decibel.to_string()),
+            ("state".to_string(), state.to_string()),
+            ("icon".to_string(), icon),
         ])
     }
 
@@ -83,9 +118,11 @@ impl Volume {
             Some(argument) => match argument.as_str() {
                 "percent" | "per" | "p" => Ok(vec_tup[0].1.clone()),
                 "decibel" | "dec" | "d" => Ok(vec_tup[1].1.clone()),
+                "state" | "s" => Ok(vec_tup[2].1.clone()),
+                "icon" | "i" => Ok(vec_tup[3].1.clone()),
                 incorrect => Err(Arc::from(ServerError::IncorrectArgument {
                     incorrect: incorrect.to_string(),
-                    valid: vec!["percent", "decibel"]
+                    valid: vec!["percent", "decibel", "state", "icon"]
                         .iter()
                         .map(std::string::ToString::to_string)
                         .collect(),

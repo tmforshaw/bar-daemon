@@ -64,6 +64,9 @@ impl Memory {
         Ok((used_bytes / available_bytes) * 100f32)
     }
 
+    fn get_icon() -> String {
+        format!("{}/devices/ram{}", crate::ICON_THEME_PATH, crate::ICON_EXT)
+    }
     pub async fn update(mutex: &Arc<Mutex<Vec<(String, String)>>>) -> Result<(), Arc<ServerError>> {
         let mut lock = mutex.lock().await;
         *lock = Self::get_json_tuple()?;
@@ -75,10 +78,12 @@ impl Memory {
         let memory_command = Self::get()?;
         let used_bytes = Self::get_used_bytes(&memory_command)?;
         let used_percent = Self::get_used_percent(&memory_command)?;
+        let icon = Self::get_icon();
 
         Ok(vec![
             ("used_bytes".to_string(), used_bytes.to_string()),
             ("used_percent".to_string(), used_percent.to_string()),
+            ("icon".to_string(), icon),
         ])
     }
 
@@ -93,9 +98,10 @@ impl Memory {
             Some(argument) => match argument.as_str() {
                 "used_bytes" | "used_b" | "ub" => Ok(vec_tup[0].1.clone()),
                 "used_percent" | "used_p" | "up" => Ok(vec_tup[1].1.clone()),
+                "icon" | "i" => Ok(vec_tup[2].1.clone()),
                 incorrect => Err(Arc::from(ServerError::IncorrectArgument {
                     incorrect: incorrect.to_string(),
-                    valid: ["used_bytes", "used_percent"]
+                    valid: ["used_bytes", "used_percent", "icon"]
                         .iter()
                         .map(std::string::ToString::to_string)
                         .collect(),

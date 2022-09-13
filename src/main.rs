@@ -18,6 +18,9 @@ pub static IP_AND_PORT: &str = "127.0.0.69:6969";
 pub static RETRY_AMOUNT: u32 = 5;
 pub static RETRY_TIMEOUT: u64 = 2000;
 
+pub static ICON_THEME_PATH: &str = "/usr/share/icons/Papirus-Dark/symbolic";
+pub static ICON_EXT: &str = "-symbolic.svg";
+
 #[tokio::main]
 async fn main() -> Result<(), std::sync::Arc<ServerError>> {
     let args = std::env::args().collect::<Vec<String>>();

@@ -50,6 +50,20 @@ impl Brightness {
         }
     }
 
+    fn get_icon(percent: u32) -> String {
+        format!(
+            "{}/status/display-brightness-{}{}",
+            crate::ICON_THEME_PATH,
+            match percent {
+                0 => "off",
+                1..=33 => "low",
+                34..=67 => "medium",
+                68.. => "high",
+            },
+            crate::ICON_EXT
+        )
+    }
+
     pub async fn update(mutex: &Arc<Mutex<Vec<(String, String)>>>) -> Result<(), Arc<ServerError>> {
         let mut lock = mutex.lock().await;
         *lock = Self::get_json_tuple()?;
@@ -61,10 +75,12 @@ impl Brightness {
         let current_brightness_info = Self::get()?;
         let percent = Self::get_percent(&current_brightness_info[3])?;
         let value = Self::get_value(&current_brightness_info[2])?;
+        let icon = Self::get_icon(percent);
 
         Ok(vec![
             ("percent".to_string(), percent.to_string()),
             ("value".to_string(), value.to_string()),
+            ("icon".to_string(), icon),
         ])
     }
 
@@ -79,9 +95,10 @@ impl Brightness {
             Some(argument) => match argument.as_str() {
                 "percent" | "per" | "p" => Ok(vec_tup[0].1.clone()),
                 "value" | "val" | "v" => Ok(vec_tup[1].1.clone()),
+                "icon" | "i" => Ok(vec_tup[2].1.clone()),
                 incorrect => Err(Arc::from(ServerError::IncorrectArgument {
                     incorrect: incorrect.to_string(),
-                    valid: vec!["percent", "value"]
+                    valid: vec!["percent", "value", "icon"]
                         .iter()
                         .map(std::string::ToString::to_string)
                         .collect(),
