@@ -102,6 +102,7 @@ impl Battery {
     pub fn notify(
         prev_percentage: String,
         current_percentage: String,
+        icon: &str,
     ) -> Result<(), Arc<ServerError>> {
         let prev_u32 = match prev_percentage.parse::<u32>() {
             Ok(prev) => prev,
@@ -135,6 +136,8 @@ impl Battery {
                             "normal",
                             "-t",
                             BAT_NOTIFY_TIMEOUT.to_string().as_str(),
+                            "-I",
+                            icon,
                             "-r",
                             BAT_NOTIFY_ID.to_string().as_str(),
                             "-h",
@@ -159,7 +162,11 @@ impl Battery {
 
         *lock = vec_tup.clone();
 
-        Self::notify(prev_vec_tup[0].1.clone(), vec_tup[0].1.clone())
+        Self::notify(
+            prev_vec_tup[0].1.clone(),
+            vec_tup[0].1.clone(),
+            &vec_tup[3].1.clone(),
+        )
     }
 
     pub fn get_json_tuple() -> Result<Vec<(String, String)>, Arc<ServerError>> {
