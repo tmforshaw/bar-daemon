@@ -1,4 +1,5 @@
 use crate::battery::Battery;
+use crate::bluetooth::Bluetooth;
 use crate::brightness::Brightness;
 use crate::command::{
     call_and_retry, call_and_retry_async, get_all_json, mpsc_send, socket_read, socket_write,
@@ -25,6 +26,8 @@ enum ChannelCommand {
     UpdateBat,
     GetMem { args: Vec<String> },
     UpdateMem,
+    GetBT { args: Vec<String> },
+    UpdateBT,
 }
 
 impl std::fmt::Display for ChannelCommand {
@@ -42,6 +45,8 @@ impl std::fmt::Display for ChannelCommand {
                 Self::UpdateBat => "Update battery".to_string(),
                 Self::GetMem { args } => format!("Get memory: {args:?}"),
                 Self::UpdateMem => "Update memory".to_string(),
+                Self::GetBT { args } => format!("Get bluetooth: {args:?}"),
+                Self::UpdateBT => "Update bluetooth".to_string(),
             }
         )
     }
@@ -262,9 +267,36 @@ async fn parse_args(
                                 }))
                             }
                         }
+                        "bluetooth" | "bt" => {
+                            if let Err(e) = mpsc_send(
+                                server_tx,
+                                ChannelCommand::GetBT {
+                                    args: parseable_args.to_vec(),
+                                },
+                            )
+                            .await
+                            {
+                                if let Err(e) = mpsc_send(error_tx, e).await {
+                                    eprintln!("Could not send error via channel: {e}");
+                                }
+                            }
+
+                            if server_response_rx.lock().await.changed().await.is_ok() {
+                                let value = server_response_rx.lock().await.borrow().clone()?;
+
+                                Ok(Some(value))
+                            } else {
+                                Err(Arc::from(ServerError::ChannelSend {
+                                    message: ChannelCommand::GetBT {
+                                        args: parseable_args.to_vec(),
+                                    }
+                                    .to_string(),
+                                }))
+                            }
+                        }
                         incorrect => Err(Arc::from(ServerError::IncorrectArgument {
                             incorrect: incorrect.to_string(),
-                            valid: vec!["volume", "brightness", "battery", "memory"]
+                            valid: vec!["volume", "brightness", "battery", "memory", "bluetooth"]
                                 .iter()
                                 .map(std::string::ToString::to_string)
                                 .collect(),
@@ -328,13 +360,28 @@ async fn parse_args(
                                 }
                             }
                         }
+                        "bluetooth" | "bt" => {
+                            if let Err(e) =
+                                mpsc_send(server_tx.clone(), ChannelCommand::UpdateBT).await
+                            {
+                                if let Err(e) = mpsc_send(error_tx, e).await {
+                                    eprintln!("Could not send error via channel: {e}");
+                                }
+                            }
+                        }
                         incorrect => {
                             return Err(Arc::from(ServerError::IncorrectArgument {
                                 incorrect: incorrect.to_string(),
-                                valid: vec!["volume", "brightness", "battery", "memory"]
-                                    .iter()
-                                    .map(std::string::ToString::to_string)
-                                    .collect(),
+                                valid: vec![
+                                    "volume",
+                                    "brightness",
+                                    "battery",
+                                    "memory",
+                                    "bluetooth",
+                                ]
+                                .iter()
+                                .map(std::string::ToString::to_string)
+                                .collect(),
                             }))
                         }
                     },
@@ -421,6 +468,14 @@ pub async fn start() -> ServerResult<()> {
         None => return Err(Arc::from(ServerError::RetryError)),
     }));
 
+    let bt_mutex = Arc::new(Mutex::new(
+        match call_and_retry(Bluetooth::get_json_tuple) {
+            Some(Ok(out)) => out,
+            Some(Err(e)) => return Err(e),
+            None => return Err(Arc::from(ServerError::RetryError)),
+        },
+    ));
+
     let error_tx_1 = error_tx.clone();
 
     tokio::spawn(async move {
@@ -454,6 +509,7 @@ pub async fn start() -> ServerResult<()> {
                     bri_mutex.clone(),
                     bat_mutex.clone(),
                     mem_mutex.clone(),
+                    bt_mutex.clone(),
                 )
                 .await
                 {
@@ -549,6 +605,27 @@ pub async fn start() -> ServerResult<()> {
             }
             ChannelCommand::UpdateMem => {
                 if let Err(e) = Memory::update(&mem_mutex).await {
+                    if let Err(e) = error_tx.send(e).await {
+                        eprintln!("Could not send error via channel: {e}");
+                    }
+                }
+            }
+            ChannelCommand::GetBT { args } => {
+                let bluetooth = Bluetooth::parse_args(&bt_mutex.clone(), args.as_slice()).await;
+
+                if server_response_tx.send(bluetooth.clone()).is_err() {
+                    if let Err(e) = error_tx
+                        .send(Arc::from(ServerError::ChannelSend {
+                            message: format!("{bluetooth:?}"),
+                        }))
+                        .await
+                    {
+                        eprintln!("Could not send error via channel: {e}");
+                    }
+                }
+            }
+            ChannelCommand::UpdateBT => {
+                if let Err(e) = Bluetooth::update(&bt_mutex).await {
                     if let Err(e) = error_tx.send(e).await {
                         eprintln!("Could not send error via channel: {e}");
                     }

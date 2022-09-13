@@ -4,6 +4,7 @@
 #![warn(clippy::expect_used)]
 
 mod battery;
+mod bluetooth;
 mod brightness;
 pub mod command;
 mod listener;
