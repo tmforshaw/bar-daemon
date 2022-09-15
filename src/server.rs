@@ -381,50 +381,6 @@ async fn server_channel_loop(
         }
     };
 
-    // let vol_mutex = Arc::new(Mutex::new(match call_and_retry(Volume::get_json_tuple) {
-    //     Some(Ok(out)) => out,
-    //     Some(Err(e)) => {
-    //         if let Err(e) = error_tx.send(e).await {
-    //             eprintln!("Could not send error via channel: {e}");
-    //         }
-    //         return;
-    //     }
-    //     None => {
-    //         if let Err(e) = error_tx.send(Arc::from(ServerError::RetryError)).await {
-    //             eprintln!("Could not send error via channel: {e}");
-    //         }
-    //         return;
-    //     }
-    // }));
-
-    // let bri_mutex = Arc::new(Mutex::new(
-    //     match call_and_retry(Brightness::get_json_tuple) {
-    //         Some(Ok(out)) => out,
-    //         Some(Err(e)) => return Err(e),
-    //         None => return Err(Arc::from(ServerError::RetryError)),
-    //     },
-    // ));
-
-    // let bat_mutex = Arc::new(Mutex::new(match call_and_retry(Battery::get_json_tuple) {
-    //     Some(Ok(out)) => out,
-    //     Some(Err(e)) => return Err(e),
-    //     None => return Err(Arc::from(ServerError::RetryError)),
-    // }));
-
-    // let mem_mutex = Arc::new(Mutex::new(match call_and_retry(Memory::get_json_tuple) {
-    //     Some(Ok(out)) => out,
-    //     Some(Err(e)) => return Err(e),
-    //     None => return Err(Arc::from(ServerError::RetryError)),
-    // }));
-
-    // let blu_mutex = Arc::new(Mutex::new(
-    //     match call_and_retry(Bluetooth::get_json_tuple) {
-    //         Some(Ok(out)) => out,
-    //         Some(Err(e)) => return Err(e),
-    //         None => return Err(Arc::from(ServerError::RetryError)),
-    //     },
-    // ));
-
     while let Some(val) = server_rx.recv().await {
         match val {
             ServerCommand::UpdateAll => {
@@ -589,12 +545,14 @@ pub async fn start() -> ServerResult<()> {
 
     let (error_tx, mut error_rx) = mpsc::channel::<Arc<ServerError>>(32);
 
+    // Error handling loop
     tokio::spawn(async move {
         while let Some(value) = error_rx.recv().await {
             eprintln!("{value}");
         }
     });
 
+    // Update sending loop
     let server_tx_1 = server_tx.clone();
     tokio::spawn(async move {
         loop {
@@ -606,8 +564,8 @@ pub async fn start() -> ServerResult<()> {
         }
     });
 
+    // Socket loop
     let error_tx_1 = error_tx.clone();
-
     tokio::spawn(async move {
         socket_loop(
             listener,
@@ -619,6 +577,7 @@ pub async fn start() -> ServerResult<()> {
         .await;
     });
 
+    // Server channel loop
     server_channel_loop(&mut server_rx, server_response_tx, error_tx, listener_tx).await;
 
     Ok(())
