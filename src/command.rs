@@ -101,13 +101,13 @@ pub async fn get_all_json(
     bri_mutex: Arc<Mutex<Vec<(String, String)>>>,
     bat_mutex: Arc<Mutex<Vec<(String, String)>>>,
     mem_mutex: Arc<Mutex<Vec<(String, String)>>>,
-    bt_mutex: Arc<Mutex<Vec<(String, String)>>>,
+    blu_mutex: Arc<Mutex<Vec<(String, String)>>>,
 ) -> Result<String, Box<ServerError>> {
     let volume_tup = vol_mutex.lock().await.clone();
     let brightness_tup = bri_mutex.lock().await.clone();
     let battery_tup = bat_mutex.lock().await.clone();
     let memory_tup = mem_mutex.lock().await.clone();
-    let bluetooth_tup = bt_mutex.lock().await.clone();
+    let bluetooth_tup = blu_mutex.lock().await.clone();
 
     Ok(format!(
         "{{\"volume\": {}, \"brightness\": {}, \"battery\": {}, \"memory\": {}, \"bluetooth\": {}}}",

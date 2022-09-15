@@ -9,7 +9,7 @@ pub struct Bluetooth {}
 impl Bluetooth {
     fn get_state() -> Result<bool, Arc<ServerError>> {
         match command::run("bluetooth", &[])?
-            .trim()
+            // .trim()
             .split_whitespace()
             .nth(2)
         {

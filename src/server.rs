@@ -26,8 +26,8 @@ enum ChannelCommand {
     UpdateBat,
     GetMem { args: Vec<String> },
     UpdateMem,
-    GetBT { args: Vec<String> },
-    UpdateBT,
+    GetBlu { args: Vec<String> },
+    UpdateBlu,
 }
 
 impl std::fmt::Display for ChannelCommand {
@@ -45,8 +45,8 @@ impl std::fmt::Display for ChannelCommand {
                 Self::UpdateBat => "Update battery".to_string(),
                 Self::GetMem { args } => format!("Get memory: {args:?}"),
                 Self::UpdateMem => "Update memory".to_string(),
-                Self::GetBT { args } => format!("Get bluetooth: {args:?}"),
-                Self::UpdateBT => "Update bluetooth".to_string(),
+                Self::GetBlu { args } => format!("Get bluetooth: {args:?}"),
+                Self::UpdateBlu => "Update bluetooth".to_string(),
             }
         )
     }
@@ -270,7 +270,7 @@ async fn parse_args(
                         "bluetooth" | "bt" => {
                             if let Err(e) = mpsc_send(
                                 server_tx,
-                                ChannelCommand::GetBT {
+                                ChannelCommand::GetBlu {
                                     args: parseable_args.to_vec(),
                                 },
                             )
@@ -287,7 +287,7 @@ async fn parse_args(
                                 Ok(Some(value))
                             } else {
                                 Err(Arc::from(ServerError::ChannelSend {
-                                    message: ChannelCommand::GetBT {
+                                    message: ChannelCommand::GetBlu {
                                         args: parseable_args.to_vec(),
                                     }
                                     .to_string(),
@@ -362,7 +362,7 @@ async fn parse_args(
                         }
                         "bluetooth" | "bt" => {
                             if let Err(e) =
-                                mpsc_send(server_tx.clone(), ChannelCommand::UpdateBT).await
+                                mpsc_send(server_tx.clone(), ChannelCommand::UpdateBlu).await
                             {
                                 if let Err(e) = mpsc_send(error_tx, e).await {
                                     eprintln!("Could not send error via channel: {e}");
@@ -468,7 +468,7 @@ pub async fn start() -> ServerResult<()> {
         None => return Err(Arc::from(ServerError::RetryError)),
     }));
 
-    let bt_mutex = Arc::new(Mutex::new(
+    let blu_mutex = Arc::new(Mutex::new(
         match call_and_retry(Bluetooth::get_json_tuple) {
             Some(Ok(out)) => out,
             Some(Err(e)) => return Err(e),
@@ -509,7 +509,7 @@ pub async fn start() -> ServerResult<()> {
                     bri_mutex.clone(),
                     bat_mutex.clone(),
                     mem_mutex.clone(),
-                    bt_mutex.clone(),
+                    blu_mutex.clone(),
                 )
                 .await
                 {
@@ -610,8 +610,8 @@ pub async fn start() -> ServerResult<()> {
                     }
                 }
             }
-            ChannelCommand::GetBT { args } => {
-                let bluetooth = Bluetooth::parse_args(&bt_mutex.clone(), args.as_slice()).await;
+            ChannelCommand::GetBlu { args } => {
+                let bluetooth = Bluetooth::parse_args(&blu_mutex.clone(), args.as_slice()).await;
 
                 if server_response_tx.send(bluetooth.clone()).is_err() {
                     if let Err(e) = error_tx
@@ -624,8 +624,8 @@ pub async fn start() -> ServerResult<()> {
                     }
                 }
             }
-            ChannelCommand::UpdateBT => {
-                if let Err(e) = Bluetooth::update(&bt_mutex).await {
+            ChannelCommand::UpdateBlu => {
+                if let Err(e) = Bluetooth::update(&blu_mutex).await {
                     if let Err(e) = error_tx.send(e).await {
                         eprintln!("Could not send error via channel: {e}");
                     }
