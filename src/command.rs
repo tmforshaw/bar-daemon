@@ -4,7 +4,9 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::Mutex;
+
+pub type ServerResult<T> = Result<T, Arc<ServerError>>;
 
 #[derive(Error, Debug)]
 pub enum ServerError {
@@ -96,26 +98,20 @@ fn get_json_from_tuple(vec_tup: &[(String, String)]) -> String {
 
 /// # Errors
 /// Returns an error if any values cannot be found in each mutex
-pub async fn get_all_json(
-    vol_mutex: Arc<Mutex<Vec<(String, String)>>>,
-    bri_mutex: Arc<Mutex<Vec<(String, String)>>>,
-    bat_mutex: Arc<Mutex<Vec<(String, String)>>>,
-    mem_mutex: Arc<Mutex<Vec<(String, String)>>>,
-    blu_mutex: Arc<Mutex<Vec<(String, String)>>>,
+pub fn get_all_json(
+    vol_tup: &[(String, String)],
+    bri_tup: &[(String, String)],
+    bat_tup: &[(String, String)],
+    mem_tup: &[(String, String)],
+    blu_tup: &[(String, String)],
 ) -> Result<String, Box<ServerError>> {
-    let volume_tup = vol_mutex.lock().await.clone();
-    let brightness_tup = bri_mutex.lock().await.clone();
-    let battery_tup = bat_mutex.lock().await.clone();
-    let memory_tup = mem_mutex.lock().await.clone();
-    let bluetooth_tup = blu_mutex.lock().await.clone();
-
     Ok(format!(
         "{{\"volume\": {}, \"brightness\": {}, \"battery\": {}, \"memory\": {}, \"bluetooth\": {}}}",
-        get_json_from_tuple(&volume_tup),
-        get_json_from_tuple(&brightness_tup),
-        get_json_from_tuple(&battery_tup),
-        get_json_from_tuple(&memory_tup),
-        get_json_from_tuple(&bluetooth_tup),
+        get_json_from_tuple(vol_tup),
+        get_json_from_tuple(bri_tup),
+        get_json_from_tuple(bat_tup),
+        get_json_from_tuple(mem_tup),
+        get_json_from_tuple(blu_tup),
     ))
 }
 
@@ -203,19 +199,5 @@ pub async fn socket_write(
     match socket.lock().await.write_all(buf).await {
         Ok(_) => Ok(()),
         Err(e) => Err(Arc::from(ServerError::SocketWrite { e })),
-    }
-}
-
-/// # Errors
-// returns an error if Channel could not send message
-pub async fn mpsc_send<T>(channel: mpsc::Sender<T>, message: T) -> Result<(), Arc<ServerError>>
-where
-    T: std::fmt::Display + Clone + Send,
-{
-    let msg = message.to_string();
-
-    match channel.send(message).await {
-        Ok(_) => Ok(()),
-        Err(_) => Err(Arc::from(ServerError::ChannelSend { message: msg })),
     }
 }

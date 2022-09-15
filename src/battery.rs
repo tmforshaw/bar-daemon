@@ -2,7 +2,6 @@ use crate::command;
 use crate::command::ServerError;
 
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 #[derive(PartialEq, Eq, Debug)]
 enum BatteryState {
@@ -154,19 +153,18 @@ impl Battery {
         Ok(())
     }
 
-    pub async fn update(mutex: &Arc<Mutex<Vec<(String, String)>>>) -> Result<(), Arc<ServerError>> {
-        let mut lock = mutex.lock().await;
-
-        let prev_vec_tup = lock.clone();
-        let vec_tup = Self::get_json_tuple()?;
-
-        *lock = vec_tup.clone();
+    pub async fn update(
+        vec_tup: &mut [(String, String)],
+    ) -> Result<Vec<(String, String)>, Arc<ServerError>> {
+        let prev_vec_tup = vec_tup.to_owned();
 
         Self::notify(
             prev_vec_tup[0].1.clone(),
             vec_tup[0].1.clone(),
             &vec_tup[3].1.clone(),
-        )
+        )?;
+
+        Self::get_json_tuple()
     }
 
     pub fn get_json_tuple() -> Result<Vec<(String, String)>, Arc<ServerError>> {
@@ -186,12 +184,9 @@ impl Battery {
     }
 
     pub async fn parse_args(
-        mutex: &Arc<Mutex<Vec<(String, String)>>>,
+        vec_tup: &[(String, String)],
         args: &[String],
     ) -> Result<String, Arc<ServerError>> {
-        let lock = mutex.lock().await;
-        let vec_tup = lock.clone();
-
         match args.get(0) {
             Some(argument) => match argument.as_str() {
                 "percent" | "per" | "p" => Ok(vec_tup[0].1.clone()),

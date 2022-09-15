@@ -6,6 +6,7 @@
 mod battery;
 mod bluetooth;
 mod brightness;
+pub mod channel;
 pub mod command;
 mod listener;
 mod memory;

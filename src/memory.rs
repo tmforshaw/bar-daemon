@@ -2,7 +2,6 @@ use crate::command;
 use crate::command::ServerError;
 
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 pub struct Memory {}
 
@@ -67,11 +66,9 @@ impl Memory {
     fn get_icon() -> String {
         format!("{}/devices/ram{}", crate::ICON_THEME_PATH, crate::ICON_EXT)
     }
-    pub async fn update(mutex: &Arc<Mutex<Vec<(String, String)>>>) -> Result<(), Arc<ServerError>> {
-        let mut lock = mutex.lock().await;
-        *lock = Self::get_json_tuple()?;
 
-        Ok(())
+    pub async fn update() -> Result<Vec<(String, String)>, Arc<ServerError>> {
+        Self::get_json_tuple()
     }
 
     pub fn get_json_tuple() -> Result<Vec<(String, String)>, Arc<ServerError>> {
@@ -88,12 +85,9 @@ impl Memory {
     }
 
     pub async fn parse_args(
-        mutex: &Arc<Mutex<Vec<(String, String)>>>,
+        vec_tup: &[(String, String)],
         args: &[String],
     ) -> Result<String, Arc<ServerError>> {
-        let lock = mutex.lock().await;
-        let vec_tup = lock.clone();
-
         match args.get(0) {
             Some(argument) => match argument.as_str() {
                 "used_bytes" | "used_b" | "ub" => Ok(vec_tup[0].1.clone()),
