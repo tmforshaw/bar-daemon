@@ -51,7 +51,7 @@ impl Brightness {
 
     fn get_icon(percent: u32) -> String {
         format!(
-            "status/display-brightness-{}{}",
+            "display-brightness-{}{}",
             match percent {
                 0 => "off",
                 1..=33 => "low",

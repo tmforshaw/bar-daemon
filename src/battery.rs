@@ -86,7 +86,7 @@ impl Battery {
 
     fn get_icon(percent: u32, state: &BatteryState) -> String {
         format!(
-            "status/battery-level-{}{}{}",
+            "battery-level-{}{}{}",
             percent / 10 * 10,
             match state {
                 BatteryState::Charging => "-charging",
@@ -134,7 +134,7 @@ impl Battery {
                             "normal",
                             "-t",
                             BAT_NOTIFY_TIMEOUT.to_string().as_str(),
-                            "-I",
+                            "-i",
                             icon,
                             "-r",
                             BAT_NOTIFY_ID.to_string().as_str(),

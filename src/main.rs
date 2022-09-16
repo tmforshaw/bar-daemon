@@ -21,7 +21,7 @@ pub static RETRY_AMOUNT: u32 = 5;
 pub static RETRY_TIMEOUT: u64 = 2000;
 
 // pub static ICON_THEME_PATH: &str = "/usr/share/icons/Tela-purple-dark/symbolic";
-pub static ICON_EXT: &str = "-symbolic.svg";
+pub static ICON_EXT: &str = "-symbolic";
 
 #[tokio::main]
 async fn main() -> Result<(), std::sync::Arc<ServerError>> {

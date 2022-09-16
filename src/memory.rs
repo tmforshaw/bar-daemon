@@ -64,7 +64,7 @@ impl Memory {
     }
 
     fn get_icon() -> String {
-        format!("devices/ram{}", crate::ICON_EXT)
+        format!("ram{}", crate::ICON_EXT)
     }
 
     pub async fn update() -> Result<Vec<(String, String)>, Arc<ServerError>> {
