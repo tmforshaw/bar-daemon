@@ -67,8 +67,7 @@ impl Volume {
 
     fn get_icon(percent: u32, mute_state: bool) -> String {
         format!(
-            "{}/status/audio-volume-{}{}",
-            crate::ICON_THEME_PATH,
+            "status/audio-volume-{}{}",
             if mute_state {
                 "muted"
             } else {

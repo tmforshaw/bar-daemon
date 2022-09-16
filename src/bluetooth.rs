@@ -19,8 +19,7 @@ impl Bluetooth {
 
     fn get_icon(state: bool) -> String {
         format!(
-            "{}/status/bluetooth-{}{}",
-            crate::ICON_THEME_PATH,
+            "status/bluetooth-{}{}",
             if state { "active" } else { "disabled" },
             crate::ICON_EXT
         )

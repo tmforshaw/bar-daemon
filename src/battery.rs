@@ -86,8 +86,7 @@ impl Battery {
 
     fn get_icon(percent: u32, state: &BatteryState) -> String {
         format!(
-            "{}/status/battery-level-{}{}{}",
-            crate::ICON_THEME_PATH,
+            "status/battery-level-{}{}{}",
             percent / 10 * 10,
             match state {
                 BatteryState::Charging => "-charging",
