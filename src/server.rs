@@ -385,7 +385,7 @@ async fn server_channel_loop(
         match val {
             ServerCommand::UpdateAll => {
                 match Battery::update(&mut bat_tup).await {
-                    Ok(tup) => mem_tup = tup,
+                    Ok(tup) => bat_tup = tup,
                     Err(e) => {
                         if let Err(e) = error_tx.send(e).await {
                             eprintln!("Could not send error via channel: {e}");
