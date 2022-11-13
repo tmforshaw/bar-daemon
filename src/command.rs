@@ -153,14 +153,14 @@ where
         let match_output = match func().await {
             Ok(output) => Ok(output),
             Err(_) if count < crate::RETRY_AMOUNT => {
-                eprintln!("Retrying function with type {}", std::any::type_name::<O>(),);
+                eprintln!("Retrying function with type {}", std::any::type_name::<F>(),);
                 std::thread::sleep(std::time::Duration::from_millis(crate::RETRY_TIMEOUT));
 
                 continue;
             }
             Err(e) => Err(e),
         };
-
+       
         output = Some(match_output);
         break;
     }
