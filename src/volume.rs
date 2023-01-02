@@ -6,54 +6,30 @@ use std::sync::Arc;
 pub struct Volume {}
 
 impl Volume {
-    // fn get() -> Result<String, Arc<ServerError>> {
-    //     Ok(command::run("pw-volume", &["status"])?)
-    // }
-
-    // fn get_percent(volume_command: &str) -> Result<u32, Arc<ServerError>> {
-    //     match volume_command.split(',').nth(0) {
-    //         Some(text) => match text
-    //             .trim()
-    //             .trim_start_matches('{')
-    //             .trim_matches('"')
-    //             .split(':')
-    //             .nth(1)
-    //         {
-    //             Some(integer_text) => match integer_text.parse() {
-    //                 Ok(integer) => Ok(integer),
-    //                 Err(e) => Err(Arc::from(ServerError::StringParse {
-    //                     debug_string: integer_text.to_string(),
-    //                     ty: "integer".to_string(),
-    //                     e: Arc::from(e),
-    //                 })),
-    //             },
-    //             None => Err(Arc::from(ServerError::NotInOutput {
-    //                 looking_for: "volume percentage".to_string(),
-    //                 output: text.to_string(),
-    //             })),
-    //         },
-    //         None => Err(Arc::from(ServerError::NotInOutput {
-    //             looking_for: "volume percentage".to_string(),
-    //             output: volume_command.to_string(),
-    //         })),
-    //     }
-    // }
-
     fn get() -> Result<String, Arc<ServerError>> {
-        Ok(command::run(
-            "pactl",
-            &["get-sink-volume", "@DEFAULT_SINK@"],
-        )?)
+        Ok(command::run("pw-volume", &["status"])?)
     }
 
     fn get_percent(volume_command: &str) -> Result<u32, Arc<ServerError>> {
-        match volume_command.trim().split_whitespace().nth(4) {
-            Some(text) => match text.trim().trim_matches('%').parse() {
-                Ok(integer) => Ok(integer),
-                Err(e) => Err(Arc::from(ServerError::StringParse {
-                    debug_string: text.to_string(),
-                    ty: "integer".to_string(),
-                    e: Arc::from(e),
+        match volume_command.split(',').nth(0) {
+            Some(text) => match text
+                .trim()
+                .trim_start_matches('{')
+                .trim_matches('"')
+                .split(':')
+                .nth(1)
+            {
+                Some(integer_text) => match integer_text.parse() {
+                    Ok(integer) => Ok(integer),
+                    Err(e) => Err(Arc::from(ServerError::StringParse {
+                        debug_string: integer_text.to_string(),
+                        ty: "integer".to_string(),
+                        e: Arc::from(e),
+                    })),
+                },
+                None => Err(Arc::from(ServerError::NotInOutput {
+                    looking_for: "volume percentage".to_string(),
+                    output: text.to_string(),
                 })),
             },
             None => Err(Arc::from(ServerError::NotInOutput {
@@ -62,6 +38,30 @@ impl Volume {
             })),
         }
     }
+
+    // fn get() -> Result<String, Arc<ServerError>> {
+    //     Ok(command::run(
+    //         "pactl",
+    //         &["get-sink-volume", "@DEFAULT_SINK@"],
+    //     )?)
+    // }
+
+    // fn get_percent(volume_command: &str) -> Result<u32, Arc<ServerError>> {
+    //     match volume_command.trim().split_whitespace().nth(4) {
+    //         Some(text) => match text.trim().trim_matches('%').parse() {
+    //             Ok(integer) => Ok(integer),
+    //             Err(e) => Err(Arc::from(ServerError::StringParse {
+    //                 debug_string: text.to_string(),
+    //                 ty: "integer".to_string(),
+    //                 e: Arc::from(e),
+    //             })),
+    //         },
+    //         None => Err(Arc::from(ServerError::NotInOutput {
+    //             looking_for: "volume percentage".to_string(),
+    //             output: volume_command.to_string(),
+    //         })),
+    //     }
+    // }
 
     // fn get_decibel(volume_command: &str) -> Result<f32, Arc<ServerError>> {
     //     match volume_command.split('/').nth(2) {
