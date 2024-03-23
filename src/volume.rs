@@ -147,7 +147,7 @@ impl Volume {
                 "icon" | "i" => Ok(vec_tup[2].1.clone()),
                 incorrect => Err(Arc::from(ServerError::IncorrectArgument {
                     incorrect: incorrect.to_string(),
-                    valid: vec!["percent", "state", "icon"]
+                    valid: vec!["percent", "state", "icon"] // , "decibel"
                         .iter()
                         .map(std::string::ToString::to_string)
                         .collect(),
