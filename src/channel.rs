@@ -1,4 +1,7 @@
-use crate::command::{ServerError, ServerResult};
+use crate::{
+    command::{ServerError, ServerResult},
+    server::send_or_print_err,
+};
 
 use std::sync::Arc;
 
@@ -47,11 +50,11 @@ pub async fn mpsc_send<T>(channel: mpsc::Sender<T>, message: T) -> Result<(), Ar
 where
     T: std::fmt::Display + Clone + Send,
 {
-    let msg = message.to_string();
-
-    match channel.send(message).await {
-        Ok(_) => Ok(()),
-        Err(_) => Err(Arc::from(ServerError::ChannelSend { message: msg })),
+    match channel.send(message.clone()).await {
+        Ok(()) => Ok(()),
+        Err(_) => Err(Arc::from(ServerError::ChannelSend {
+            message: message.to_string(),
+        })),
     }
 }
 
@@ -60,17 +63,20 @@ where
 pub async fn send_and_await_response(
     command: ServerCommand,
     server_tx: mpsc::Sender<ServerCommand>,
+    // server_response_rx: watch::Receiver<ServerResult<String>>,
     server_response_rx: Arc<Mutex<watch::Receiver<ServerResult<String>>>>,
     error_tx: mpsc::Sender<Arc<ServerError>>,
 ) -> ServerResult<String> {
     if let Err(e) = mpsc_send(server_tx, command.clone()).await {
-        if let Err(e) = mpsc_send(error_tx, e).await {
-            eprintln!("Could not send error via channel: {e}");
-        }
+        send_or_print_err(e, &error_tx).await;
     }
 
-    if server_response_rx.lock().await.changed().await.is_ok() {
-        let value = server_response_rx.lock().await.borrow().clone()?;
+    let mut response_lock = server_response_rx.lock().await;
+
+    if response_lock.changed().await.is_ok() {
+        let value = response_lock.borrow().clone()?;
+
+        drop(response_lock);
 
         Ok(value)
     } else {

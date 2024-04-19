@@ -7,14 +7,10 @@ pub struct Bluetooth {}
 
 impl Bluetooth {
     fn get_state() -> Result<bool, Arc<ServerError>> {
-        match command::run("bluetooth", &[])?
-            .trim()
+        command::run("bluetooth", &[])?
             .split_whitespace()
             .nth(2)
-        {
-            Some(value) => Ok(value == "on"),
-            None => todo!(),
-        }
+            .map_or_else(|| todo!(), |value| Ok(value == "on"))
     }
 
     fn get_icon(state: bool) -> String {
@@ -25,7 +21,7 @@ impl Bluetooth {
         )
     }
 
-    pub async fn update() -> Result<Vec<(String, String)>, Arc<ServerError>> {
+    pub fn update() -> Result<Vec<(String, String)>, Arc<ServerError>> {
         Self::get_json_tuple()
     }
 
@@ -39,23 +35,23 @@ impl Bluetooth {
         ])
     }
 
-    pub async fn parse_args(
+    pub fn parse_args(
         vec_tup: &[(String, String)],
         args: &[String],
     ) -> Result<String, Arc<ServerError>> {
-        match args.get(0) {
-            Some(argument) => match argument.as_str() {
+        args.first().map_or_else(
+            || Err(Arc::from(ServerError::EmptyArguments)),
+            |argument| match argument.as_str() {
                 "state" | "s" => Ok(vec_tup[0].1.clone()),
                 "icon" | "i" => Ok(vec_tup[1].1.clone()),
                 incorrect => Err(Arc::from(ServerError::IncorrectArgument {
                     incorrect: incorrect.to_string(),
-                    valid: vec!["state", "icon"]
+                    valid: ["state", "icon"]
                         .iter()
                         .map(std::string::ToString::to_string)
                         .collect(),
                 })),
             },
-            None => Err(Arc::from(ServerError::EmptyArguments)),
-        }
+        )
     }
 }

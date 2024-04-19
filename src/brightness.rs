@@ -9,17 +9,21 @@ impl Brightness {
     fn get() -> Result<Vec<String>, Arc<ServerError>> {
         let bri = command::run("brightnessctl", &["i"])?;
 
-        match bri.split('\n').nth(1) {
-            Some(line) => Ok(line
-                .trim()
-                .split(' ')
-                .map(std::string::ToString::to_string)
-                .collect::<Vec<String>>()),
-            None => Err(Arc::from(ServerError::NotInOutput {
-                looking_for: "brightness".to_string(),
-                output: bri,
-            })),
-        }
+        bri.split('\n').nth(1).map_or_else(
+            || {
+                Err(Arc::from(ServerError::NotInOutput {
+                    looking_for: "brightness".to_string(),
+                    output: bri.clone(),
+                }))
+            },
+            |line| {
+                Ok(line
+                    .trim()
+                    .split(' ')
+                    .map(std::string::ToString::to_string)
+                    .collect::<Vec<String>>())
+            },
+        )
     }
 
     fn get_percent(percentage_unfiltered: &str) -> Result<u32, Arc<ServerError>> {
@@ -62,7 +66,7 @@ impl Brightness {
         )
     }
 
-    pub async fn update() -> Result<Vec<(String, String)>, Arc<ServerError>> {
+    pub fn update() -> Result<Vec<(String, String)>, Arc<ServerError>> {
         Self::get_json_tuple()
     }
 
@@ -79,24 +83,24 @@ impl Brightness {
         ])
     }
 
-    pub async fn parse_args(
+    pub fn parse_args(
         vec_tup: &[(String, String)],
         args: &[String],
     ) -> Result<String, Arc<ServerError>> {
-        match args.get(0) {
-            Some(argument) => match argument.as_str() {
+        args.first().map_or_else(
+            || Err(Arc::from(ServerError::EmptyArguments)),
+            |argument| match argument.as_str() {
                 "percent" | "per" | "p" => Ok(vec_tup[0].1.clone()),
                 "value" | "val" | "v" => Ok(vec_tup[1].1.clone()),
                 "icon" | "i" => Ok(vec_tup[2].1.clone()),
                 incorrect => Err(Arc::from(ServerError::IncorrectArgument {
                     incorrect: incorrect.to_string(),
-                    valid: vec!["percent", "value", "icon"]
+                    valid: ["percent", "value", "icon"]
                         .iter()
                         .map(std::string::ToString::to_string)
                         .collect(),
                 })),
             },
-            None => Err(Arc::from(ServerError::EmptyArguments)),
-        }
+        )
     }
 }

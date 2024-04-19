@@ -93,7 +93,7 @@ fn get_json_from_tuple(vec_tup: &[(String, String)]) -> String {
         .collect::<Vec<String>>()
         .join(", ");
 
-    format!("{{{}}}", joined_string)
+    format!("{{{joined_string}}}")
 }
 
 /// # Errors
@@ -160,7 +160,7 @@ where
             }
             Err(e) => Err(e),
         };
-       
+
         output = Some(match_output);
         break;
     }
@@ -175,8 +175,10 @@ where
 pub async fn socket_read(socket: Arc<Mutex<TcpStream>>) -> Result<String, Arc<ServerError>> {
     let mut buf = [0; 1024];
 
-    let n = match socket.lock().await.read(&mut buf).await {
-        Ok(n) if n == 0 => return Err(Arc::from(ServerError::SocketDisconnect)),
+    let token = socket.lock().await.read(&mut buf).await;
+
+    let n = match token {
+        Ok(0) => return Err(Arc::from(ServerError::SocketDisconnect)),
         Ok(n) => n,
         Err(e) => return Err(Arc::from(ServerError::SocketRead { e })),
     };
@@ -196,8 +198,9 @@ pub async fn socket_write(
     socket: Arc<Mutex<TcpStream>>,
     buf: &[u8],
 ) -> Result<(), Arc<ServerError>> {
-    match socket.lock().await.write_all(buf).await {
-        Ok(_) => Ok(()),
+    let token = socket.lock().await.write_all(buf).await;
+    match token {
+        Ok(()) => Ok(()),
         Err(e) => Err(Arc::from(ServerError::SocketWrite { e })),
     }
 }

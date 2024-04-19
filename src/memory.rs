@@ -11,49 +11,61 @@ impl Memory {
     }
 
     fn get_used_bytes(memory_command: &str) -> Result<f32, Arc<ServerError>> {
-        match memory_command.split_terminator('\n').nth(1) {
-            Some(line) => match line.split_ascii_whitespace().nth(2) {
-                Some(string) => match string.trim().parse::<f32>() {
-                    Ok(float_val) => Ok(float_val),
-                    Err(e) => Err(Arc::from(ServerError::StringParse {
-                        debug_string: string.to_string(),
-                        ty: "float".to_string(),
-                        e: Arc::from(e),
-                    })),
-                },
-                None => Err(Arc::from(ServerError::NotInOutput {
-                    looking_for: "used bytes".to_string(),
-                    output: line.to_string(),
-                })),
+        memory_command.split_terminator('\n').nth(1).map_or_else(
+            || {
+                Err(Arc::from(ServerError::NotInOutput {
+                    looking_for: "memory".to_string(),
+                    output: memory_command.to_string(),
+                }))
             },
-            None => Err(Arc::from(ServerError::NotInOutput {
-                looking_for: "memory".to_string(),
-                output: memory_command.to_string(),
-            })),
-        }
+            |line| {
+                line.split_ascii_whitespace().nth(2).map_or_else(
+                    || {
+                        Err(Arc::from(ServerError::NotInOutput {
+                            looking_for: "used bytes".to_string(),
+                            output: line.to_string(),
+                        }))
+                    },
+                    |string| match string.trim().parse::<f32>() {
+                        Ok(float_val) => Ok(float_val),
+                        Err(e) => Err(Arc::from(ServerError::StringParse {
+                            debug_string: string.to_string(),
+                            ty: "float".to_string(),
+                            e: Arc::from(e),
+                        })),
+                    },
+                )
+            },
+        )
     }
 
     fn get_available_bytes(memory_command: &str) -> Result<f32, Arc<ServerError>> {
-        match memory_command.split_terminator('\n').nth(1) {
-            Some(line) => match line.split_ascii_whitespace().nth(1) {
-                Some(string) => match string.trim().parse::<f32>() {
-                    Ok(float_val) => Ok(float_val),
-                    Err(e) => Err(Arc::from(ServerError::StringParse {
-                        debug_string: string.to_string(),
-                        ty: "float".to_string(),
-                        e: Arc::from(e),
-                    })),
-                },
-                None => Err(Arc::from(ServerError::NotInOutput {
-                    looking_for: "available bytes".to_string(),
-                    output: line.to_string(),
-                })),
+        memory_command.split_terminator('\n').nth(1).map_or_else(
+            || {
+                Err(Arc::from(ServerError::NotInOutput {
+                    looking_for: "memory".to_string(),
+                    output: memory_command.to_string(),
+                }))
             },
-            None => Err(Arc::from(ServerError::NotInOutput {
-                looking_for: "memory".to_string(),
-                output: memory_command.to_string(),
-            })),
-        }
+            |line| {
+                line.split_ascii_whitespace().nth(1).map_or_else(
+                    || {
+                        Err(Arc::from(ServerError::NotInOutput {
+                            looking_for: "available bytes".to_string(),
+                            output: line.to_string(),
+                        }))
+                    },
+                    |string| match string.trim().parse::<f32>() {
+                        Ok(float_val) => Ok(float_val),
+                        Err(e) => Err(Arc::from(ServerError::StringParse {
+                            debug_string: string.to_string(),
+                            ty: "float".to_string(),
+                            e: Arc::from(e),
+                        })),
+                    },
+                )
+            },
+        )
     }
 
     fn get_used_percent(memory_command: &str) -> Result<f32, Arc<ServerError>> {
@@ -67,7 +79,7 @@ impl Memory {
         format!("ram{}", crate::ICON_EXT)
     }
 
-    pub async fn update() -> Result<Vec<(String, String)>, Arc<ServerError>> {
+    pub fn update() -> Result<Vec<(String, String)>, Arc<ServerError>> {
         Self::get_json_tuple()
     }
 
@@ -84,12 +96,13 @@ impl Memory {
         ])
     }
 
-    pub async fn parse_args(
+    pub fn parse_args(
         vec_tup: &[(String, String)],
         args: &[String],
     ) -> Result<String, Arc<ServerError>> {
-        match args.get(0) {
-            Some(argument) => match argument.as_str() {
+        args.first().map_or_else(
+            || Err(Arc::from(ServerError::EmptyArguments)),
+            |argument| match argument.as_str() {
                 "used_bytes" | "used_b" | "ub" => Ok(vec_tup[0].1.clone()),
                 "used_percent" | "used_p" | "up" => Ok(vec_tup[1].1.clone()),
                 "icon" | "i" => Ok(vec_tup[2].1.clone()),
@@ -101,7 +114,6 @@ impl Memory {
                         .collect(),
                 })),
             },
-            None => Err(Arc::from(ServerError::EmptyArguments)),
-        }
+        )
     }
 }

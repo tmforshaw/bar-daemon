@@ -25,8 +25,14 @@ impl Battery {
     }
 
     fn get_percent(battery_command: &str) -> Result<u32, Arc<ServerError>> {
-        match battery_command.split_whitespace().nth(3) {
-            Some(percentage) => match percentage
+        battery_command.split_whitespace().nth(3).map_or(
+            {
+                Err(Arc::from(ServerError::NotInOutput {
+                    looking_for: "battery".to_string(),
+                    output: battery_command.to_string(),
+                }))
+            },
+            |percentage| match percentage
                 .trim()
                 .trim_end_matches(',')
                 .trim_end_matches('%')
@@ -39,36 +45,37 @@ impl Battery {
                     e: Arc::from(e),
                 })),
             },
-            None => Err(Arc::from(ServerError::NotInOutput {
-                looking_for: "battery".to_string(),
-                output: battery_command.to_string(),
-            })),
-        }
+        )
     }
 
     fn get_time(battery_command: &str) -> Result<String, Arc<ServerError>> {
-        match battery_command.split_whitespace().nth(4) {
-            Some(time) => Ok(time.trim().replace(':', " ")),
-            None => {
-                let state = Self::get_state(battery_command)?;
+        if let Some(time) = battery_command.split_whitespace().nth(4) {
+            Ok(time.trim().replace(':', " "))
+        } else {
+            let state = Self::get_state(battery_command)?;
 
-                if state == BatteryState::FullyCharged {
-                    Ok(String::from(
-                        BAT_STATES[BatteryState::FullyCharged as usize],
-                    ))
-                } else {
-                    Err(Arc::from(ServerError::NotInOutput {
-                        looking_for: "battery time".to_string(),
-                        output: battery_command.to_string(),
-                    }))
-                }
+            if state == BatteryState::FullyCharged {
+                Ok(String::from(
+                    BAT_STATES[BatteryState::FullyCharged as usize],
+                ))
+            } else {
+                Err(Arc::from(ServerError::NotInOutput {
+                    looking_for: "battery time".to_string(),
+                    output: battery_command.to_string(),
+                }))
             }
         }
     }
 
     fn get_state(battery_command: &str) -> Result<BatteryState, Arc<ServerError>> {
-        match battery_command.split_whitespace().nth(2) {
-            Some(state) => match state.trim_end_matches(',') {
+        battery_command.split_whitespace().nth(2).map_or_else(
+            || {
+                Err(Arc::from(ServerError::NotInOutput {
+                    looking_for: "battery state".to_string(),
+                    output: battery_command.to_string(),
+                }))
+            },
+            |state| match state.trim_end_matches(',') {
                 "Full" => Ok(BatteryState::FullyCharged),
                 "Charging" => Ok(BatteryState::Charging),
                 "Discharging" => Ok(BatteryState::Discharging),
@@ -77,11 +84,7 @@ impl Battery {
                     object: "battery".to_string(),
                 })),
             },
-            None => Err(Arc::from(ServerError::NotInOutput {
-                looking_for: "battery state".to_string(),
-                output: battery_command.to_string(),
-            })),
-        }
+        )
     }
 
     fn get_icon(percent: u32, state: &BatteryState) -> String {
@@ -152,9 +155,7 @@ impl Battery {
         Ok(())
     }
 
-    pub async fn update(
-        vec_tup: &mut [(String, String)],
-    ) -> Result<Vec<(String, String)>, Arc<ServerError>> {
+    pub fn update(vec_tup: &[(String, String)]) -> Result<Vec<(String, String)>, Arc<ServerError>> {
         let prev_vec_tup = vec_tup.to_owned();
 
         Self::notify(
@@ -182,12 +183,13 @@ impl Battery {
         ])
     }
 
-    pub async fn parse_args(
+    pub fn parse_args(
         vec_tup: &[(String, String)],
         args: &[String],
     ) -> Result<String, Arc<ServerError>> {
-        match args.get(0) {
-            Some(argument) => match argument.as_str() {
+        args.first().map_or_else(
+            || Err(Arc::from(ServerError::EmptyArguments)),
+            |argument| match argument.as_str() {
                 "percent" | "per" | "p" => Ok(vec_tup[0].1.clone()),
                 "time" | "t" => Ok(vec_tup[1].1.clone()),
                 "state" | "s" => Ok(vec_tup[2].1.clone()),
@@ -200,7 +202,6 @@ impl Battery {
                         .collect(),
                 })),
             },
-            None => Err(Arc::from(ServerError::EmptyArguments)),
-        }
+        )
     }
 }

@@ -1,10 +1,11 @@
+#![allow(clippy::too_many_lines)]
 use crate::battery::Battery;
 use crate::bluetooth::Bluetooth;
 use crate::brightness::Brightness;
 use crate::channel::{mpsc_send, send_and_await_response, ServerCommand};
 use crate::command::{
-    call_and_retry, call_and_retry_async, get_all_json, socket_read, socket_write, ServerError,
-    ServerResult,
+    self, call_and_retry, call_and_retry_async, get_all_json, socket_read, socket_write,
+    ServerError, ServerResult,
 };
 use crate::memory::Memory;
 use crate::volume::Volume;
@@ -21,9 +22,7 @@ async fn process_socket_message(
     let message = match socket_read(socket).await {
         Ok(m) => m,
         Err(e) => {
-            if let Err(e) = mpsc_send(error_tx, e).await {
-                eprintln!("Could not send error via channel: {e}");
-            }
+            send_or_print_err(e, &error_tx).await;
 
             return None;
         }
@@ -48,13 +47,8 @@ async fn socket_loop(
         let socket = match listener.accept().await {
             Ok((socket, _)) => Arc::from(Mutex::new(socket)),
             Err(e) => {
-                if let Err(e) = error_tx
-                    .clone()
-                    .send(Arc::from(ServerError::AddressInUse { e }))
-                    .await
-                {
-                    eprintln!("Could not send error via channel: {e}");
-                };
+                send_or_print_err(Arc::from(ServerError::AddressInUse { e }), &error_tx).await;
+
                 return;
             }
         };
@@ -65,9 +59,9 @@ async fn socket_loop(
         let error_tx_1 = error_tx.clone();
 
         tokio::spawn(async move {
-            let args = match process_socket_message(socket.clone(), error_tx_1.clone()).await {
-                Some(args) => args,
-                None => return,
+            let Some(args) = process_socket_message(socket.clone(), error_tx_1.clone()).await
+            else {
+                return;
             };
 
             let reply = match parse_args(
@@ -83,9 +77,7 @@ async fn socket_loop(
                 Ok(reply) => reply,
                 Err(e) => {
                     if let Err(e) = socket_write(socket, e.to_string().as_bytes()).await {
-                        if let Err(e) = mpsc_send(error_tx_1, e).await {
-                            eprintln!("Could not send error via channel: {e}");
-                        }
+                        send_or_print_err(e, &error_tx_1).await;
                     }
                     return;
                 }
@@ -93,9 +85,7 @@ async fn socket_loop(
 
             if let Some(r) = reply {
                 if let Err(e) = socket_write(socket, r.as_bytes()).await {
-                    if let Err(e) = mpsc_send(error_tx_1, e).await {
-                        eprintln!("Could not send error via channel: {e}");
-                    }
+                    send_or_print_err(e, &error_tx_1).await;
                 }
             };
         });
@@ -174,7 +164,7 @@ async fn parse_get_args(
                 )),
                 incorrect => Err(Arc::from(ServerError::IncorrectArgument {
                     incorrect: incorrect.to_string(),
-                    valid: vec!["volume", "brightness", "battery", "memory", "bluetooth"]
+                    valid: ["volume", "brightness", "battery", "memory", "bluetooth"]
                         .iter()
                         .map(std::string::ToString::to_string)
                         .collect(),
@@ -194,9 +184,7 @@ async fn parse_listen_args(
         let value = listener_rx.lock().await.borrow().clone();
 
         if let Err(e) = socket_write(socket.clone(), value.as_bytes()).await {
-            if let Err(e) = mpsc_send(error_tx.clone(), e).await {
-                eprintln!("Could not send error via channel: {e}");
-            }
+            send_or_print_err(e, &error_tx).await;
 
             // Exit out of loop when socket disconnects
             return Ok(None);
@@ -211,54 +199,43 @@ async fn parse_update_args(
     server_tx: mpsc::Sender<ServerCommand>,
     error_tx: mpsc::Sender<Arc<ServerError>>,
 ) -> ServerResult<Option<String>> {
-    match args.get(1) {
-        Some(argument) => match argument.as_str() {
+    if let Some(argument) = args.get(1) {
+        match argument.as_str() {
             "volume" | "vol" => {
                 if let Err(e) = mpsc_send(server_tx.clone(), ServerCommand::UpdateVol).await {
-                    if let Err(e) = mpsc_send(error_tx, e).await {
-                        eprintln!("Could not send error via channel: {e}");
-                    }
+                    send_or_print_err(e, &error_tx).await;
                 }
             }
             "brightness" | "bri" => {
                 if let Err(e) = mpsc_send(server_tx.clone(), ServerCommand::UpdateBri).await {
-                    if let Err(e) = mpsc_send(error_tx, e).await {
-                        eprintln!("Could not send error via channel: {e}");
-                    }
+                    send_or_print_err(e, &error_tx).await;
                 }
             }
             "battery" | "bat" => {
                 if let Err(e) = mpsc_send(server_tx.clone(), ServerCommand::UpdateBat).await {
-                    if let Err(e) = mpsc_send(error_tx, e).await {
-                        eprintln!("Could not send error via channel: {e}");
-                    }
+                    send_or_print_err(e, &error_tx).await;
                 }
             }
             "memory" | "mem" => {
                 if let Err(e) = mpsc_send(server_tx.clone(), ServerCommand::UpdateMem).await {
-                    if let Err(e) = mpsc_send(error_tx, e).await {
-                        eprintln!("Could not send error via channel: {e}");
-                    }
+                    send_or_print_err(e, &error_tx).await;
                 }
             }
             "bluetooth" | "bt" => {
                 if let Err(e) = mpsc_send(server_tx.clone(), ServerCommand::UpdateBlu).await {
-                    if let Err(e) = mpsc_send(error_tx, e).await {
-                        eprintln!("Could not send error via channel: {e}");
-                    }
+                    send_or_print_err(e, &error_tx).await;
                 }
             }
             incorrect => {
                 return Err(Arc::from(ServerError::IncorrectArgument {
                     incorrect: incorrect.to_string(),
-                    valid: vec!["volume", "brightness", "battery", "memory", "bluetooth"]
+                    valid: ["volume", "brightness", "battery", "memory", "bluetooth"]
                         .iter()
                         .map(std::string::ToString::to_string)
                         .collect(),
                 }))
             }
-        },
-        None => {}
+        }
     };
 
     if server_tx.send(ServerCommand::UpdateAll).await.is_err() {
@@ -278,20 +255,95 @@ async fn parse_args(
     server_response_rx: Arc<Mutex<watch::Receiver<ServerResult<String>>>>,
     listener_rx: Arc<Mutex<watch::Receiver<String>>>,
 ) -> ServerResult<Option<String>> {
-    match args.get(0) {
-        Some(command) => match command.as_str() {
+    if let Some(command) = args.first() {
+        match command.as_str() {
             "get" => parse_get_args(args, server_tx, server_response_rx, error_tx).await,
             "listen" => parse_listen_args(listener_rx, socket, error_tx).await,
             "update" => parse_update_args(args, server_tx, error_tx).await,
             incorrect => Err(Arc::from(ServerError::IncorrectArgument {
                 incorrect: incorrect.to_string(),
-                valid: vec!["get", "listen", "update"]
+                valid: ["get", "listen", "update"]
                     .iter()
                     .map(std::string::ToString::to_string)
                     .collect(),
             })),
-        },
-        None => Err(Arc::from(ServerError::EmptyArguments)),
+        }
+    } else {
+        Err(Arc::from(ServerError::EmptyArguments))
+    }
+}
+
+async fn get_tup<F, O>(get_tuple_func: F, error_tx: &mpsc::Sender<Arc<ServerError>>) -> Option<O>
+where
+    F: Fn() -> Result<O, Arc<command::ServerError>> + std::marker::Send,
+    O: std::marker::Send,
+{
+    match call_and_retry(get_tuple_func) {
+        Some(Ok(out)) => Some(out),
+        Some(Err(e)) => {
+            send_or_print_err(e, error_tx).await;
+            None
+        }
+        None => {
+            send_or_print_err(Arc::from(ServerError::RetryError), error_tx).await;
+            None
+        }
+    }
+}
+
+pub async fn send_or_print_err(error: Arc<ServerError>, error_tx: &mpsc::Sender<Arc<ServerError>>) {
+    if let Err(e) = error_tx.send(error).await {
+        eprintln!("Could not send error via channel: {e}");
+    }
+}
+
+async fn update_all(
+    vol_tup: &[(String, String)],
+    bri_tup: &[(String, String)],
+    bat_tup: &mut Vec<(String, String)>,
+    mem_tup: &mut Vec<(String, String)>,
+    blu_tup: &[(String, String)],
+    listener_tx: &watch::Sender<String>,
+    error_tx: &mpsc::Sender<Arc<ServerError>>,
+) {
+    update_battery(bat_tup, error_tx).await;
+    update_memory(mem_tup, error_tx).await;
+
+    match get_all_json(vol_tup, bri_tup, bat_tup, mem_tup, blu_tup) {
+        Ok(json) => {
+            if listener_tx.send(json.clone()).is_err() {
+                send_or_print_err(
+                    Arc::from(ServerError::ChannelSend { message: json }),
+                    error_tx,
+                )
+                .await;
+            }
+        }
+        Err(e) => eprintln!("{e}"),
+    };
+}
+
+async fn update_battery(
+    bat_tup: &mut Vec<(String, String)>,
+    error_tx: &mpsc::Sender<Arc<ServerError>>,
+) {
+    match Battery::update(bat_tup) {
+        Ok(tup) => *bat_tup = tup,
+        Err(e) => {
+            send_or_print_err(e, error_tx).await;
+        }
+    }
+}
+
+async fn update_memory(
+    mem_tup: &mut Vec<(String, String)>,
+    error_tx: &mpsc::Sender<Arc<ServerError>>,
+) {
+    match Memory::update() {
+        Ok(tup) => *mem_tup = tup,
+        Err(e) => {
+            send_or_print_err(e, error_tx).await;
+        }
     }
 }
 
@@ -301,227 +353,125 @@ async fn server_channel_loop(
     error_tx: mpsc::Sender<Arc<ServerError>>,
     listener_tx: watch::Sender<String>,
 ) {
-    let mut vol_tup = match call_and_retry(Volume::get_json_tuple) {
-        Some(Ok(out)) => out,
-        Some(Err(e)) => {
-            if let Err(e) = error_tx.send(e).await {
-                eprintln!("Could not send error via channel: {e}");
-            }
-            return;
-        }
-        None => {
-            if let Err(e) = error_tx.send(Arc::from(ServerError::RetryError)).await {
-                eprintln!("Could not send error via channel: {e}");
-            }
-            return;
-        }
+    let Some(mut vol_tup) = get_tup(Volume::get_json_tuple, &error_tx).await else {
+        return;
     };
 
-    let mut bri_tup = match call_and_retry(Brightness::get_json_tuple) {
-        Some(Ok(out)) => out,
-        Some(Err(e)) => {
-            if let Err(e) = error_tx.send(e).await {
-                eprintln!("Could not send error via channel: {e}");
-            }
-            return;
-        }
-        None => {
-            if let Err(e) = error_tx.send(Arc::from(ServerError::RetryError)).await {
-                eprintln!("Could not send error via channel: {e}");
-            }
-            return;
-        }
+    let Some(mut bri_tup) = get_tup(Brightness::get_json_tuple, &error_tx).await else {
+        return;
     };
 
-    let mut bat_tup = match call_and_retry(Battery::get_json_tuple) {
-        Some(Ok(out)) => out,
-        Some(Err(e)) => {
-            if let Err(e) = error_tx.send(e).await {
-                eprintln!("Could not send error via channel: {e}");
-            }
-            return;
-        }
-        None => {
-            if let Err(e) = error_tx.send(Arc::from(ServerError::RetryError)).await {
-                eprintln!("Could not send error via channel: {e}");
-            }
-            return;
-        }
+    let Some(mut bat_tup) = get_tup(Battery::get_json_tuple, &error_tx).await else {
+        return;
     };
 
-    let mut mem_tup = match call_and_retry(Memory::get_json_tuple) {
-        Some(Ok(out)) => out,
-        Some(Err(e)) => {
-            if let Err(e) = error_tx.send(e).await {
-                eprintln!("Could not send error via channel: {e}");
-            }
-            return;
-        }
-        None => {
-            if let Err(e) = error_tx.send(Arc::from(ServerError::RetryError)).await {
-                eprintln!("Could not send error via channel: {e}");
-            }
-            return;
-        }
+    let Some(mut mem_tup) = get_tup(Memory::get_json_tuple, &error_tx).await else {
+        return;
     };
 
-    let mut blu_tup = match call_and_retry(Bluetooth::get_json_tuple) {
-        Some(Ok(out)) => out,
-        Some(Err(e)) => {
-            if let Err(e) = error_tx.send(e).await {
-                eprintln!("Could not send error via channel: {e}");
-            }
-            return;
-        }
-        None => {
-            if let Err(e) = error_tx.send(Arc::from(ServerError::RetryError)).await {
-                eprintln!("Could not send error via channel: {e}");
-            }
-            return;
-        }
+    let Some(mut blu_tup) = get_tup(Bluetooth::get_json_tuple, &error_tx).await else {
+        return;
     };
 
     while let Some(val) = server_rx.recv().await {
         match val {
             ServerCommand::UpdateAll => {
-                match Battery::update(&mut bat_tup).await {
-                    Ok(tup) => bat_tup = tup,
-                    Err(e) => {
-                        if let Err(e) = error_tx.send(e).await {
-                            eprintln!("Could not send error via channel: {e}");
-                        }
-                    }
-                }
-                match Memory::update().await {
-                    Ok(tup) => mem_tup = tup,
-                    Err(e) => {
-                        if let Err(e) = error_tx.send(e).await {
-                            eprintln!("Could not send error via channel: {e}");
-                        }
-                    }
-                }
-                match get_all_json(&vol_tup, &bri_tup, &bat_tup, &mem_tup, &blu_tup) {
-                    Ok(json) => {
-                        if listener_tx.send(json.clone()).is_err() {
-                            if let Err(e) = error_tx
-                                .send(Arc::from(ServerError::ChannelSend { message: json }))
-                                .await
-                            {
-                                eprintln!("Could not send error via channel: {e}");
-                            }
-                        }
-                    }
-                    Err(e) => eprintln!("{e}"),
-                };
+                update_all(
+                    &vol_tup,
+                    &bri_tup,
+                    &mut bat_tup,
+                    &mut mem_tup,
+                    &blu_tup,
+                    &listener_tx,
+                    &error_tx,
+                )
+                .await;
             }
             ServerCommand::GetVol { args } => {
-                let volume = Volume::parse_args(&vol_tup, args.as_slice()).await;
+                let volume = Volume::parse_args(&vol_tup, args.as_slice());
+
+                println!("Found Volume {volume:?}");
 
                 if server_response_tx.send(volume.clone()).is_err() {
-                    if let Err(e) = error_tx
-                        .send(Arc::from(ServerError::ChannelSend {
+                    send_or_print_err(
+                        Arc::from(ServerError::ChannelSend {
                             message: format!("{volume:?}"),
-                        }))
-                        .await
-                    {
-                        eprintln!("Could not send error via channel: {e}");
-                    }
+                        }),
+                        &error_tx,
+                    )
+                    .await;
                 }
             }
-            ServerCommand::UpdateVol => match Volume::update().await {
+            ServerCommand::UpdateVol => match Volume::update() {
                 Ok(tup) => vol_tup = tup,
                 Err(e) => {
-                    if let Err(e) = error_tx.send(e).await {
-                        eprintln!("Could not send error via channel: {e}");
-                    }
+                    send_or_print_err(e, &error_tx).await;
                 }
             },
             ServerCommand::GetBri { args } => {
-                let brightness = Brightness::parse_args(&bri_tup, args.as_slice()).await;
+                let brightness = Brightness::parse_args(&bri_tup, args.as_slice());
 
                 if server_response_tx.send(brightness.clone()).is_err() {
-                    if let Err(e) = error_tx
-                        .send(Arc::from(ServerError::ChannelSend {
+                    send_or_print_err(
+                        Arc::from(ServerError::ChannelSend {
                             message: format!("{brightness:?}"),
-                        }))
-                        .await
-                    {
-                        eprintln!("Could not send error via channel: {e}");
-                    }
+                        }),
+                        &error_tx,
+                    )
+                    .await;
                 }
             }
-            ServerCommand::UpdateBri => match Brightness::update().await {
+            ServerCommand::UpdateBri => match Brightness::update() {
                 Ok(tup) => bri_tup = tup,
                 Err(e) => {
-                    if let Err(e) = error_tx.send(e).await {
-                        eprintln!("Could not send error via channel: {e}");
-                    }
+                    send_or_print_err(e, &error_tx).await;
                 }
             },
             ServerCommand::GetBat { args } => {
-                let battery = Battery::parse_args(&bat_tup, args.as_slice()).await;
+                let battery = Battery::parse_args(&bat_tup, args.as_slice());
 
                 if server_response_tx.send(battery.clone()).is_err() {
-                    if let Err(e) = error_tx
-                        .send(Arc::from(ServerError::ChannelSend {
+                    send_or_print_err(
+                        Arc::from(ServerError::ChannelSend {
                             message: format!("{battery:?}"),
-                        }))
-                        .await
-                    {
-                        eprintln!("Could not send error via channel: {e}");
-                    }
+                        }),
+                        &error_tx,
+                    )
+                    .await;
                 }
             }
-            ServerCommand::UpdateBat => match Battery::update(&mut bat_tup).await {
-                Ok(tup) => bat_tup = tup,
-                Err(e) => {
-                    if let Err(e) = error_tx.send(e).await {
-                        eprintln!("Could not send error via channel: {e}");
-                    }
-                }
-            },
+            ServerCommand::UpdateBat => update_battery(&mut bat_tup, &error_tx).await,
             ServerCommand::GetMem { args } => {
-                let memory = Memory::parse_args(&mem_tup, args.as_slice()).await;
+                let memory = Memory::parse_args(&mem_tup, args.as_slice());
 
                 if server_response_tx.send(memory.clone()).is_err() {
-                    if let Err(e) = error_tx
-                        .send(Arc::from(ServerError::ChannelSend {
+                    send_or_print_err(
+                        Arc::from(ServerError::ChannelSend {
                             message: format!("{memory:?}"),
-                        }))
-                        .await
-                    {
-                        eprintln!("Could not send error via channel: {e}");
-                    }
+                        }),
+                        &error_tx,
+                    )
+                    .await;
                 }
             }
-            ServerCommand::UpdateMem => match Memory::update().await {
-                Ok(tup) => mem_tup = tup,
-                Err(e) => {
-                    if let Err(e) = error_tx.send(e).await {
-                        eprintln!("Could not send error via channel: {e}");
-                    }
-                }
-            },
+            ServerCommand::UpdateMem => update_memory(&mut mem_tup, &error_tx).await,
             ServerCommand::GetBlu { args } => {
-                let bluetooth = Bluetooth::parse_args(&blu_tup, args.as_slice()).await;
+                let bluetooth = Bluetooth::parse_args(&blu_tup, args.as_slice());
 
                 if server_response_tx.send(bluetooth.clone()).is_err() {
-                    if let Err(e) = error_tx
-                        .send(Arc::from(ServerError::ChannelSend {
+                    send_or_print_err(
+                        Arc::from(ServerError::ChannelSend {
                             message: format!("{bluetooth:?}"),
-                        }))
-                        .await
-                    {
-                        eprintln!("Could not send error via channel: {e}");
-                    }
+                        }),
+                        &error_tx,
+                    )
+                    .await;
                 }
             }
-            ServerCommand::UpdateBlu => match Bluetooth::update().await {
+            ServerCommand::UpdateBlu => match Bluetooth::update() {
                 Ok(tup) => blu_tup = tup,
                 Err(e) => {
-                    if let Err(e) = error_tx.send(e).await {
-                        eprintln!("Could not send error via channel: {e}");
-                    }
+                    send_or_print_err(e, &error_tx).await;
                 }
             },
         }
@@ -540,8 +490,8 @@ pub async fn start() -> ServerResult<()> {
     };
 
     let (server_tx, mut server_rx) = mpsc::channel(32);
-    let (server_response_tx, server_response_rx) = watch::channel(Ok(String::from("")));
-    let (listener_tx, listener_rx) = watch::channel(String::from(""));
+    let (server_response_tx, server_response_rx) = watch::channel(Ok(String::new()));
+    let (listener_tx, listener_rx) = watch::channel(String::new());
 
     let (error_tx, mut error_rx) = mpsc::channel::<Arc<ServerError>>(32);
 

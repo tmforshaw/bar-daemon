@@ -11,32 +11,37 @@ impl Volume {
     }
 
     fn get_percent(volume_command: &str) -> Result<u32, Arc<ServerError>> {
-        match volume_command.split(',').nth(0) {
-            Some(text) => match text
-                .trim()
-                .trim_start_matches('{')
-                .trim_matches('"')
-                .split(':')
-                .nth(1)
+        volume_command.split(',').nth(0).map_or(
             {
-                Some(integer_text) => match integer_text.parse() {
-                    Ok(integer) => Ok(integer),
-                    Err(e) => Err(Arc::from(ServerError::StringParse {
-                        debug_string: integer_text.to_string(),
-                        ty: "integer".to_string(),
-                        e: Arc::from(e),
-                    })),
-                },
-                None => Err(Arc::from(ServerError::NotInOutput {
+                Err(Arc::from(ServerError::NotInOutput {
                     looking_for: "volume percentage".to_string(),
-                    output: text.to_string(),
-                })),
+                    output: volume_command.to_string(),
+                }))
             },
-            None => Err(Arc::from(ServerError::NotInOutput {
-                looking_for: "volume percentage".to_string(),
-                output: volume_command.to_string(),
-            })),
-        }
+            |text| {
+                text.trim()
+                    .trim_start_matches('{')
+                    .trim_matches('"')
+                    .split(':')
+                    .nth(1)
+                    .map_or(
+                        {
+                            Err(Arc::from(ServerError::NotInOutput {
+                                looking_for: "volume percentage".to_string(),
+                                output: text.to_string(),
+                            }))
+                        },
+                        |integer_text| match integer_text.parse() {
+                            Ok(integer) => Ok(integer),
+                            Err(e) => Err(Arc::from(ServerError::StringParse {
+                                debug_string: integer_text.to_string(),
+                                ty: "integer".to_string(),
+                                e: Arc::from(e),
+                            })),
+                        },
+                    )
+            },
+        )
     }
 
     // fn get() -> Result<String, Arc<ServerError>> {
@@ -89,13 +94,15 @@ impl Volume {
     fn get_state() -> Result<bool, Arc<ServerError>> {
         let mute_command = command::run("pactl", &["get-sink-mute", "@DEFAULT_SINK@"])?;
 
-        match mute_command.split_whitespace().nth(1) {
-            Some(mute_val) => Ok(mute_val == "yes"),
-            None => Err(Arc::from(ServerError::NotInOutput {
-                looking_for: "mute state".to_string(),
-                output: mute_command,
-            })),
-        }
+        mute_command.split_whitespace().nth(1).map_or(
+            {
+                Err(Arc::from(ServerError::NotInOutput {
+                    looking_for: "mute state".to_string(),
+                    output: mute_command.clone(),
+                }))
+            },
+            |mute_val| Ok(mute_val == "yes"),
+        )
     }
 
     fn get_icon(percent: u32, mute_state: bool) -> String {
@@ -116,7 +123,7 @@ impl Volume {
         )
     }
 
-    pub async fn update() -> Result<Vec<(String, String)>, Arc<ServerError>> {
+    pub fn update() -> Result<Vec<(String, String)>, Arc<ServerError>> {
         Self::get_json_tuple()
     }
 
@@ -135,25 +142,25 @@ impl Volume {
         ])
     }
 
-    pub async fn parse_args(
+    pub fn parse_args(
         vec_tup: &[(String, String)],
         args: &[String],
     ) -> Result<String, Arc<ServerError>> {
-        match args.get(0) {
-            Some(argument) => match argument.as_str() {
+        args.first().map_or_else(
+            || Err(Arc::from(ServerError::EmptyArguments)),
+            |argument| match argument.as_str() {
                 "percent" | "per" | "p" => Ok(vec_tup[0].1.clone()),
                 // "decibel" | "dec" | "d" => Ok(vec_tup[1].1.clone()),
                 "state" | "s" => Ok(vec_tup[1].1.clone()),
                 "icon" | "i" => Ok(vec_tup[2].1.clone()),
                 incorrect => Err(Arc::from(ServerError::IncorrectArgument {
                     incorrect: incorrect.to_string(),
-                    valid: vec!["percent", "state", "icon"] // , "decibel"
+                    valid: ["percent", "state", "icon"] // , "decibel"
                         .iter()
                         .map(std::string::ToString::to_string)
                         .collect(),
                 })),
             },
-            None => Err(Arc::from(ServerError::EmptyArguments)),
-        }
+        )
     }
 }

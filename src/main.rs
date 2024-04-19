@@ -34,7 +34,7 @@ async fn main() -> Result<(), std::sync::Arc<ServerError>> {
             "daemon" => server::start().await,
             incorrect => Err(std::sync::Arc::from(ServerError::IncorrectArgument {
                 incorrect: incorrect.to_string(),
-                valid: vec!["get", "update", "listen", "daemon"]
+                valid: ["get", "update", "listen", "daemon"]
                     .iter()
                     .map(std::string::ToString::to_string)
                     .collect(),
