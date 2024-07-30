@@ -4,7 +4,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 
 pub type ServerResult<T> = Result<T, Arc<ServerError>>;
 
@@ -87,13 +87,14 @@ pub fn run(command_name: &str, args: &[&str]) -> Result<String, ServerError> {
 }
 
 fn get_json_from_tuple(vec_tup: &[(String, String)]) -> String {
-    let joined_string = vec_tup
-        .iter()
-        .map(|t| format!("\"{}\": \"{}\"", t.0, t.1))
-        .collect::<Vec<String>>()
-        .join(", ");
-
-    format!("{{{joined_string}}}")
+    format!(
+        "{{{}}}",
+        vec_tup
+            .iter()
+            .map(|t| format!("\"{}\": \"{}\"", t.0, t.1))
+            .collect::<Vec<String>>()
+            .join(", ")
+    )
 }
 
 /// # Errors
@@ -202,5 +203,32 @@ pub async fn socket_write(
     match token {
         Ok(()) => Ok(()),
         Err(e) => Err(Arc::from(ServerError::SocketWrite { e })),
+    }
+}
+
+pub async fn get_tup<F, O>(
+    get_tuple_func: F,
+    error_tx: &mpsc::Sender<Arc<ServerError>>,
+) -> Option<O>
+where
+    F: Fn() -> Result<O, Arc<ServerError>> + std::marker::Send,
+    O: std::marker::Send,
+{
+    match call_and_retry(get_tuple_func) {
+        Some(Ok(out)) => Some(out),
+        Some(Err(e)) => {
+            send_or_print_err(e, error_tx).await;
+            None
+        }
+        None => {
+            send_or_print_err(Arc::from(ServerError::RetryError), error_tx).await;
+            None
+        }
+    }
+}
+
+pub async fn send_or_print_err(error: Arc<ServerError>, error_tx: &mpsc::Sender<Arc<ServerError>>) {
+    if let Err(e) = error_tx.send(error).await {
+        eprintln!("Could not send error via channel: {e}");
     }
 }

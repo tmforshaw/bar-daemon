@@ -4,7 +4,7 @@ use crate::bluetooth::Bluetooth;
 use crate::brightness::Brightness;
 use crate::channel::{mpsc_send, send_and_await_response, ServerCommand};
 use crate::command::{
-    self, call_and_retry, call_and_retry_async, get_all_json, socket_read, socket_write,
+    call_and_retry_async, get_all_json, get_tup, send_or_print_err, socket_read, socket_write,
     ServerError, ServerResult,
 };
 use crate::memory::Memory;
@@ -273,30 +273,6 @@ async fn parse_args(
     }
 }
 
-async fn get_tup<F, O>(get_tuple_func: F, error_tx: &mpsc::Sender<Arc<ServerError>>) -> Option<O>
-where
-    F: Fn() -> Result<O, Arc<command::ServerError>> + std::marker::Send,
-    O: std::marker::Send,
-{
-    match call_and_retry(get_tuple_func) {
-        Some(Ok(out)) => Some(out),
-        Some(Err(e)) => {
-            send_or_print_err(e, error_tx).await;
-            None
-        }
-        None => {
-            send_or_print_err(Arc::from(ServerError::RetryError), error_tx).await;
-            None
-        }
-    }
-}
-
-pub async fn send_or_print_err(error: Arc<ServerError>, error_tx: &mpsc::Sender<Arc<ServerError>>) {
-    if let Err(e) = error_tx.send(error).await {
-        eprintln!("Could not send error via channel: {e}");
-    }
-}
-
 async fn update_all(
     vol_tup: &[(String, String)],
     bri_tup: &[(String, String)],
@@ -353,23 +329,20 @@ async fn server_channel_loop(
     error_tx: mpsc::Sender<Arc<ServerError>>,
     listener_tx: watch::Sender<String>,
 ) {
-    let Some(mut vol_tup) = get_tup(Volume::get_json_tuple, &error_tx).await else {
-        return;
-    };
-
-    let Some(mut bri_tup) = get_tup(Brightness::get_json_tuple, &error_tx).await else {
-        return;
-    };
-
-    let Some(mut bat_tup) = get_tup(Battery::get_json_tuple, &error_tx).await else {
-        return;
-    };
-
-    let Some(mut mem_tup) = get_tup(Memory::get_json_tuple, &error_tx).await else {
-        return;
-    };
-
-    let Some(mut blu_tup) = get_tup(Bluetooth::get_json_tuple, &error_tx).await else {
+    let (
+        Some(mut vol_tup),
+        Some(mut bri_tup),
+        Some(mut bat_tup),
+        Some(mut mem_tup),
+        Some(mut blu_tup),
+    ) = (
+        get_tup(Volume::get_json_tuple, &error_tx).await,
+        get_tup(Brightness::get_json_tuple, &error_tx).await,
+        get_tup(Battery::get_json_tuple, &error_tx).await,
+        get_tup(Memory::get_json_tuple, &error_tx).await,
+        get_tup(Bluetooth::get_json_tuple, &error_tx).await,
+    )
+    else {
         return;
     };
 

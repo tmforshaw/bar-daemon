@@ -1,7 +1,4 @@
-use crate::{
-    command::{ServerError, ServerResult},
-    server::send_or_print_err,
-};
+use crate::command::{send_or_print_err, ServerError, ServerResult};
 
 use std::sync::Arc;
 
@@ -63,7 +60,6 @@ where
 pub async fn send_and_await_response(
     command: ServerCommand,
     server_tx: mpsc::Sender<ServerCommand>,
-    // server_response_rx: watch::Receiver<ServerResult<String>>,
     server_response_rx: Arc<Mutex<watch::Receiver<ServerResult<String>>>>,
     error_tx: mpsc::Sender<Arc<ServerError>>,
 ) -> ServerResult<String> {
