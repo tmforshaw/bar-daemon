@@ -8,9 +8,10 @@ enum BatteryState {
     FullyCharged,
     Charging,
     Discharging,
+    NotCharging,
 }
 
-const BAT_STATES: &[&str] = &["Fully charged", "Charging", "Discharging"];
+const BAT_STATES: &[&str] = &["Fully charged", "Charging", "Discharging", "Not Charging"];
 
 const BAT_NOTIFY_VALUES: &[u32] = &[5, 15, 20, 30];
 const BAT_NOTIFY_ID: u32 = 42069;
@@ -32,38 +33,54 @@ impl Battery {
                     output: battery_command.to_string(),
                 }))
             },
-            |percentage| match percentage
-                .trim()
-                .trim_end_matches(',')
-                .trim_end_matches('%')
-                .parse()
-            {
-                Ok(integer) => Ok(integer),
-                Err(e) => Err(Arc::from(ServerError::StringParse {
-                    debug_string: percentage.to_string(),
-                    ty: "integer".to_string(),
-                    e: Arc::from(e),
-                })),
+            |percentage| {
+                percentage
+                    .trim()
+                    .trim_end_matches(',')
+                    .trim_end_matches('%')
+                    .parse()
+                    .map_or_else(
+                        |_| {
+                            battery_command.split(',').nth(1).map_or(
+                                {
+                                    Err(Arc::from(ServerError::NotInOutput {
+                                        looking_for: "battery".to_string(),
+                                        output: battery_command.to_string(),
+                                    }))
+                                },
+                                |percentage| {
+                                    percentage.trim().trim_end_matches('%').parse().map_or_else(
+                                        |_| {
+                                            Err(Arc::from(ServerError::NotInOutput {
+                                                looking_for: "battery".to_string(),
+                                                output: battery_command.to_string(),
+                                            }))
+                                        },
+                                        Ok,
+                                    )
+                                },
+                            )
+                        },
+                        Ok,
+                    )
             },
         )
     }
 
     fn get_time(battery_command: &str) -> Result<String, Arc<ServerError>> {
-        if let Some(time) = battery_command.split_whitespace().nth(4) {
-            Ok(time.trim().replace(':', " "))
-        } else {
-            let state = Self::get_state(battery_command)?;
+        let state = Self::get_state(battery_command)?;
 
-            if state == BatteryState::FullyCharged {
-                Ok(String::from(
-                    BAT_STATES[BatteryState::FullyCharged as usize],
-                ))
-            } else {
-                Err(Arc::from(ServerError::NotInOutput {
-                    looking_for: "battery time".to_string(),
-                    output: battery_command.to_string(),
-                }))
+        match state {
+            BatteryState::NotCharging => {
+                Ok(String::from(BAT_STATES[BatteryState::NotCharging as usize]))
             }
+            BatteryState::FullyCharged => Ok(String::from(
+                BAT_STATES[BatteryState::FullyCharged as usize],
+            )),
+            _ => battery_command.split_whitespace().nth(4).map_or_else(
+                || Ok(String::new()),
+                |time| Ok(time.trim().replace(':', " ")),
+            ),
         }
     }
 
@@ -79,6 +96,7 @@ impl Battery {
                 "Full" => Ok(BatteryState::FullyCharged),
                 "Charging" => Ok(BatteryState::Charging),
                 "Discharging" => Ok(BatteryState::Discharging),
+                "Not" => Ok(BatteryState::NotCharging),
                 incorrect => Err(Arc::from(ServerError::UnknownValue {
                     incorrect: incorrect.to_string(),
                     object: "battery".to_string(),
@@ -88,16 +106,20 @@ impl Battery {
     }
 
     fn get_icon(percent: u32, state: &BatteryState) -> String {
-        format!(
-            "battery-level-{}{}{}",
-            percent / 10 * 10,
-            match state {
-                BatteryState::Charging => "-charging",
-                BatteryState::Discharging => "",
-                BatteryState::FullyCharged => "-charged",
-            },
-            crate::ICON_EXT
-        )
+        if state == &BatteryState::NotCharging {
+            format!("battery-missing{}", crate::ICON_EXT)
+        } else {
+            format!(
+                "battery-level-{}{}{}",
+                percent / 10 * 10,
+                match state {
+                    BatteryState::Charging => "-charging",
+                    BatteryState::FullyCharged => "-charged",
+                    _ => "",
+                },
+                crate::ICON_EXT
+            )
+        }
     }
 
     pub fn notify(

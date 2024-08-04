@@ -125,8 +125,12 @@ where
     for count in 0..=crate::RETRY_AMOUNT {
         let match_output = match func() {
             Ok(output) => Ok(output),
-            Err(_) if count < crate::RETRY_AMOUNT => {
-                eprintln!("Retrying function with type {}", std::any::type_name::<O>(),);
+            Err(e) if count < crate::RETRY_AMOUNT => {
+                eprintln!(
+                    "Retrying function with type: {}, with error type: {}\n\t{e}",
+                    std::any::type_name::<O>(),
+                    std::any::type_name::<E>()
+                );
                 std::thread::sleep(std::time::Duration::from_millis(crate::RETRY_TIMEOUT));
 
                 continue;
@@ -153,8 +157,12 @@ where
     for count in 0..=crate::RETRY_AMOUNT {
         let match_output = match func().await {
             Ok(output) => Ok(output),
-            Err(_) if count < crate::RETRY_AMOUNT => {
-                eprintln!("Retrying function with type {}", std::any::type_name::<F>(),);
+            Err(e) if count < crate::RETRY_AMOUNT => {
+                eprintln!(
+                    "Retrying function with type: {}, with error type: {}\n\t{e}",
+                    std::any::type_name::<O>(),
+                    std::any::type_name::<E>()
+                );
                 std::thread::sleep(std::time::Duration::from_millis(crate::RETRY_TIMEOUT));
 
                 continue;
