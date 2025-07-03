@@ -110,11 +110,11 @@ impl Battery {
             format!("battery-missing{}", crate::ICON_EXT)
         } else {
             format!(
-                "battery-level-{}{}{}",
+                "battery-{:0>3}{}{}",
                 percent / 10 * 10,
                 match state {
                     BatteryState::Charging => "-charging",
-                    BatteryState::FullyCharged => "-charged",
+                    // BatteryState::FullyCharged => "-charged",
                     _ => "",
                 },
                 crate::ICON_EXT
