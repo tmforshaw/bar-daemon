@@ -7,7 +7,7 @@ pub struct Bluetooth {}
 
 impl Bluetooth {
     fn get_state() -> Result<bool, Arc<ServerError>> {
-        command::run("bluetoothctl", &["list"])?
+        command::run("bluetooth", &[])?
             .split_whitespace()
             .nth(2)
             .map_or_else(|| todo!(), |value| Ok(value == "on"))
