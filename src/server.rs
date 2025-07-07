@@ -236,13 +236,13 @@ async fn parse_update_args(
                 }))
             }
         }
-    };
+    }
 
     if server_tx.send(ServerCommand::UpdateAll).await.is_err() {
         return Err(Arc::from(ServerError::ChannelSend {
             message: ServerCommand::UpdateAll.to_string(),
         }));
-    };
+    }
 
     Ok(None)
 }
@@ -296,7 +296,7 @@ async fn update_all(
             }
         }
         Err(e) => eprintln!("{e}"),
-    };
+    }
 }
 
 async fn update_battery(
