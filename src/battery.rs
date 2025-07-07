@@ -15,7 +15,7 @@ const BAT_STATES: &[&str] = &["Fully charged", "Charging", "Discharging", "Not C
 
 const BAT_NOTIFY_VALUES: &[u32] = &[5, 15, 20, 30];
 const BAT_NOTIFY_ID: u32 = 42069;
-const BAT_NOTIFY_TIMEOUT: u32 = 5000;
+const BAT_NOTIFY_TIMEOUT: u32 = 10000;
 const BAT_NOTIFY_MESSAGE: &str = "Battery: ";
 
 pub struct Battery {}
@@ -122,11 +122,8 @@ impl Battery {
         }
     }
 
-    pub fn notify(
-        prev_percentage: String,
-        current_percentage: String,
-        icon: &str,
-    ) -> Result<(), Arc<ServerError>> {
+    pub fn notify(prev_percentage: String, icon: &str) -> Result<(), Arc<ServerError>> {
+        // Parse the previous percentage
         let prev_u32 = match prev_percentage.parse::<u32>() {
             Ok(prev) => prev,
             Err(e) => {
@@ -138,20 +135,13 @@ impl Battery {
             }
         };
 
-        let curr_u32 = match current_percentage.parse::<u32>() {
-            Ok(curr) => curr,
-            Err(e) => {
-                return Err(Arc::from(ServerError::StringParse {
-                    debug_string: current_percentage,
-                    ty: "integer".to_string(),
-                    e: Arc::from(e),
-                }))
-            }
-        };
+        let battery_command = Self::get()?;
+        let curr_u32 = Self::get_percent(&battery_command)?;
+        let charging_state = Self::get_state(&battery_command)?;
 
-        if curr_u32 < prev_u32 {
-            for value in BAT_NOTIFY_VALUES.iter().rev() {
-                if curr_u32 == *value {
+        if curr_u32 < prev_u32 && charging_state == BatteryState::Discharging {
+            for &value in BAT_NOTIFY_VALUES.iter().rev() {
+                if curr_u32 == value {
                     command::run(
                         "dunstify",
                         &[
@@ -180,11 +170,7 @@ impl Battery {
     pub fn update(vec_tup: &[(String, String)]) -> Result<Vec<(String, String)>, Arc<ServerError>> {
         let prev_vec_tup = vec_tup.to_owned();
 
-        Self::notify(
-            prev_vec_tup[0].1.clone(),
-            vec_tup[0].1.clone(),
-            &vec_tup[3].1.clone(),
-        )?;
+        Self::notify(prev_vec_tup[0].1.clone(), &vec_tup[3].1.clone())?;
 
         Self::get_json_tuple()
     }
