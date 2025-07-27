@@ -42,6 +42,7 @@ dependencies = [
 name = "bar-daemon"
 version = "0.1.0"
 dependencies = [
+ "log_to_linear",
  "thiserror",
  "tokio",
 ]
@@ -96,6 +97,10 @@ dependencies = [
  "autocfg",
  "scopeguard",
 ]
+
+[[package]]
+name = "log_to_linear"
+version = "0.1.0"
 
 [[package]]
 name = "memchr"

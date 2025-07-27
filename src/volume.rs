@@ -1,6 +1,8 @@
 use crate::command;
 use crate::command::ServerError;
 
+use log_to_linear::logarithmic_to_linear;
+
 use std::sync::Arc;
 
 pub struct Volume {}
@@ -10,6 +12,8 @@ impl Volume {
         Ok(command::run("wpctl", &["get-volume", "@DEFAULT_SINK@"])?)
     }
 
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_possible_truncation)]
     fn get_percent_and_mute(volume_command: &str) -> Result<(u32, bool), Arc<ServerError>> {
         let output = volume_command.split(':').nth(1).map_or(
             {
@@ -36,7 +40,7 @@ impl Volume {
         let text = percent_output?;
 
         let percent = match text.parse::<f32>() {
-            Ok(float) => Ok((float * 100.) as u32),
+            Ok(float) => Ok(logarithmic_to_linear(f64::from(float) * 100.) as u32),
             Err(e) => Err(Arc::from(ServerError::StringParse {
                 debug_string: text.to_string(),
                 ty: "float".to_string(),
@@ -94,10 +98,7 @@ impl Volume {
         ])
     }
 
-    pub fn parse_args(
-        vec_tup: &[(String, String)],
-        args: &[String],
-    ) -> Result<String, Arc<ServerError>> {
+    pub fn parse_args(vec_tup: &[(String, String)], args: &[String]) -> Result<String, Arc<ServerError>> {
         args.first().map_or_else(
             || Err(Arc::from(ServerError::EmptyArguments)),
             |argument| match argument.as_str() {
