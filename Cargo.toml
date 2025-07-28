@@ -1,5 +1,5 @@
 [package]
-name = "bar-daemon"
+name = "bar_daemon"
 version = "0.1.0"
 edition = "2021"
 
