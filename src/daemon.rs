@@ -1,12 +1,15 @@
+use std::path::Path;
+
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
+    net::{UnixListener, UnixStream},
 };
 
 use crate::error::DaemonError;
 
-pub const IP_AND_PORT: &str = "127.0.0.1:6969";
+// pub const IP_AND_PORT: &str = "127.0.0.1:6969";
+pub const SOCKET_PATH: &str = "/tmp/bar_daemon.sock";
 pub const BUFFER_SIZE: usize = 1024;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -27,7 +30,15 @@ pub enum DaemonItem {
 }
 
 pub async fn do_daemon() -> Result<(), DaemonError> {
-    let listener = TcpListener::bind(IP_AND_PORT).await?;
+    // let listener = TcpListener::bind(IP_AND_PORT).await?;
+
+    // Remove existing socket file
+    if Path::new(SOCKET_PATH).exists() {
+        std::fs::remove_file(SOCKET_PATH)?;
+    }
+
+    // Create new UnixListener at SOCKET_PATH
+    let listener = UnixListener::bind(SOCKET_PATH)?;
 
     loop {
         let (mut stream, _) = listener.accept().await?;
@@ -66,7 +77,7 @@ pub async fn do_daemon() -> Result<(), DaemonError> {
 
 pub async fn send_daemon_messaage(message: DaemonMessage) -> Result<DaemonReply, DaemonError> {
     // Connect to the daemon
-    let mut stream = TcpStream::connect(IP_AND_PORT).await?;
+    let mut stream = UnixStream::connect(SOCKET_PATH).await?;
 
     // Write the serialized message to the daemon
     stream.write_all(&postcard::to_stdvec(&message)?).await?;
@@ -77,6 +88,11 @@ pub async fn send_daemon_messaage(message: DaemonMessage) -> Result<DaemonReply,
 
     // Serialize reply into DaemonMessage
     Ok(postcard::from_bytes(&buf[..n])?)
+}
+
+// TODO
+pub async fn shutdown_daemon() {
+    let _ = std::fs::remove_file(SOCKET_PATH);
 }
 
 pub async fn match_set_command(item: DaemonItem, value: String) -> DaemonReply {
