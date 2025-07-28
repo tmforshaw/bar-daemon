@@ -1,12 +1,12 @@
-# bar-daemon
+# bar_daemon
 A daemon that can send or receive commands and outputs in JSON format.
 
 Start listening using
 ```
-bar-daemon
+bar_daemon
 ```
 
 or send messages using
 ```
-bar-daemon send [ARGS]
+bar_daemon send [ARGS]
 ```
