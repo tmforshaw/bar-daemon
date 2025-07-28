@@ -6,7 +6,11 @@ pub mod daemon;
 pub mod error;
 pub mod volume;
 
-pub const ICON_EXT: &str = "-symbolic.svg";
+// pub const ICON_EXT: &str = "-symbolic.svg";
+pub const ICON_EXT: &str = "";
+
+pub const NOTIFICATION_ID: u32 = 42069;
+pub const NOTIFICATION_TIMEOUT: u32 = 1000;
 
 #[tokio::main]
 async fn main() -> Result<(), DaemonError> {

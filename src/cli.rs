@@ -52,20 +52,17 @@ pub async fn match_cli() -> Result<(), DaemonError> {
         CliCommands::Get { commands } => match commands {
             GetCommands::Volume { commands } => Volume::match_get_commands(commands),
         },
-        CliCommands::Set { commands } => {
-            // TODO
-            match commands {
-                SetCommands::Volume { commands } => Volume::match_set_commands(commands),
-            };
-
-            unreachable!()
-        }
+        CliCommands::Set { commands } => match commands {
+            SetCommands::Volume { commands } => Volume::match_set_commands(commands),
+        },
         CliCommands::Listen => {
             println!("Listen");
+
             unreachable!()
         }
         CliCommands::Daemon => {
             do_daemon().await?;
+
             unreachable!()
         }
     };

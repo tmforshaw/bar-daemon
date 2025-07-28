@@ -99,26 +99,23 @@ pub async fn send_daemon_messaage(message: DaemonMessage) -> Result<DaemonReply,
     Ok(postcard::from_bytes(&buf[..n])?)
 }
 
-// TODO
-pub async fn shutdown_daemon() {
-    let _ = std::fs::remove_file(SOCKET_PATH);
-}
+// // TODO
+// pub async fn shutdown_daemon() {
+//     let _ = std::fs::remove_file(SOCKET_PATH);
+// }
 
-// TODO
 pub async fn match_set_command(item: DaemonItem, value: String) -> Result<DaemonReply, DaemonError> {
-    Ok(match item.clone() {
+    let message = Ok(match item.clone() {
         DaemonItem::Volume(_) => Volume::parse_item(item.clone(), Some(value))?,
-    })
+    });
+
+    Volume::notify()?;
+
+    message
 }
 
 pub async fn match_get_command(item: DaemonItem) -> Result<DaemonReply, DaemonError> {
     Ok(match item.clone() {
         DaemonItem::Volume(_) => Volume::parse_item(item.clone(), None)?,
     })
-
-    // // TODO
-    // DaemonReply::Value {
-    //     item,
-    //     value: "The value you have gotten".to_string(),
-    // }
 }

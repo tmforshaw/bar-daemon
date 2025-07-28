@@ -8,11 +8,14 @@ pub enum DaemonError {
     #[error("Postcard Serialize/Deserialize Error:\n\t{0}")]
     PostcardError(#[from] postcard::Error),
 
-    #[error("String To Integer Error:\n\t{0}")]
-    StringError(#[from] std::string::FromUtf8Error),
-
     #[error("Command '{name}' With Args '{args:?}' Could Not Run:\n\t{e}")]
     CommandError { name: String, args: Vec<String>, e: String },
+
+    #[error("String To Integer Error:\n\t{0}")]
+    IntegerFromString(#[from] std::string::FromUtf8Error),
+
+    #[error("String Could Not Convert To Bool:\n\t{0}")]
+    BoolFromString(#[from] std::str::ParseBoolError),
 
     #[error("String Could Not Convert To Float:\n\t{0}")]
     StringToFloatError(#[from] std::num::ParseFloatError),

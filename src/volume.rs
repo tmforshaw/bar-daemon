@@ -2,10 +2,11 @@ use crate::{
     command,
     daemon::{DaemonItem, DaemonMessage, DaemonReply},
     error::DaemonError,
+    NOTIFICATION_ID, NOTIFICATION_TIMEOUT,
 };
 
 use clap::Subcommand;
-use log_to_linear::logarithmic_to_linear;
+use log_to_linear::{linear_to_logarithmic, logarithmic_to_linear};
 use serde::{Deserialize, Serialize};
 
 #[derive(Subcommand)]
@@ -44,20 +45,21 @@ pub struct Volume;
 
 impl Volume {
     fn get() -> Result<(u32, bool), DaemonError> {
+        // Get the volume and mute status as a string
         let output = command::run("wpctl", &["get-volume", "@DEFAULT_SINK@"])?;
-        let mut output_split = output.trim_start_matches("Volume: ").split(' '); // Left with only volume number, and muted status
+        let mut output_split = output.trim_start_matches("Volume: ").split_whitespace(); // Left with only volume number, and muted status
 
+        // Take the first part of the split (The numerical part) then convert to linear percentage
         let percent = if let Some(volume_str) = output_split.next() {
-            volume_str.parse::<f64>()? * 100.
+            logarithmic_to_linear(volume_str.parse::<f64>()? * 100.) as u32
         } else {
             return Err(DaemonError::ParseError(output));
         };
 
-        let linear_percent = logarithmic_to_linear(percent) as u32;
-
+        // Get the mute state from the second part of the split
         let mute = output_split.next().is_some();
 
-        Ok((linear_percent, mute))
+        Ok((percent, mute))
     }
 
     pub fn get_icon(percent: u32, muted: bool) -> String {
@@ -90,6 +92,50 @@ impl Volume {
         Ok(mute)
     }
 
+    pub fn set_percent(percent_string: String) -> Result<(), DaemonError> {
+        // If the percentage is a change, figure out the true percentage
+        let linear_percent = if percent_string.starts_with("+") || percent_string.starts_with("'") {
+            let delta_percent = percent_string
+                .trim_start_matches("+")
+                .trim_start_matches("-")
+                .to_string()
+                .parse::<f64>()?;
+
+            let current_percent = Self::get_percent()? as f64;
+
+            let first_char = percent_string.chars().next();
+
+            (current_percent
+                + match first_char {
+                    Some('+') => delta_percent,
+                    Some('-') => -delta_percent,
+                    _ => 0.0,
+                })
+            .clamp(0.0, 100.0)
+        } else {
+            percent_string.parse::<f64>()?
+        };
+
+        let logarithmic_percent = linear_to_logarithmic(linear_percent);
+
+        // Set the volume
+        let _ = command::run(
+            "wpctl",
+            &["set-volume", "@DEFAULT_SINK@", format!("{logarithmic_percent}%").as_str()],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn set_mute(mute_string: String) -> Result<(), DaemonError> {
+        let mute = mute_string.parse::<bool>()? as u8;
+
+        // Set the mute state
+        let _ = command::run("wpctl", &["set-mute", "@DEFAULT_SINK@", format!("{mute}").as_str()])?;
+
+        Ok(())
+    }
+
     pub fn get_tuples() -> Result<Vec<(String, String)>, DaemonError> {
         let (percent, mute_state) = Self::get()?;
         let icon = Self::get_icon(percent, mute_state);
@@ -102,10 +148,17 @@ impl Volume {
     }
 
     pub fn parse_item(item: DaemonItem, value: Option<String>) -> Result<DaemonReply, DaemonError> {
-        // TODO set options
-        Ok(if let Some(_value) = value {
+        Ok(if let Some(value) = value {
             // Set value
-            todo!()
+            match item.clone() {
+                DaemonItem::Volume(volume_item) => match volume_item {
+                    VolumeItem::Percent => Volume::set_percent(value.clone())?,
+                    VolumeItem::Mute => Volume::set_mute(value.clone())?,
+                    _ => {}
+                },
+            };
+
+            DaemonReply::Value { item, value }
         } else {
             // Get value
             match item.clone() {
@@ -120,6 +173,7 @@ impl Volume {
                     },
                     VolumeItem::Icon => {
                         let (percent, muted) = Self::get()?;
+
                         DaemonReply::Value {
                             item,
                             value: Self::get_icon(percent, muted),
@@ -158,5 +212,30 @@ impl Volume {
                 value: value.to_string(),
             },
         }
+    }
+
+    pub fn notify() -> Result<(), DaemonError> {
+        let (percent, muted) = Self::get()?;
+
+        let icon = Self::get_icon(percent, muted);
+
+        command::run(
+            "dunstify",
+            &[
+                "-u",
+                "normal",
+                "-r",
+                format!("{NOTIFICATION_ID}").as_str(),
+                "-i",
+                format!("{}-symbolic", icon.trim()).as_str(),
+                "-t",
+                format!("{NOTIFICATION_TIMEOUT}").as_str(),
+                "-h",
+                format!("int:value:{percent}").as_str(),
+                "Volume: ",
+            ],
+        )?;
+
+        Ok(())
     }
 }
