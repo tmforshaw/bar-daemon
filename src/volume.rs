@@ -23,8 +23,8 @@ pub enum VolumeGetCommands {
 pub enum VolumeSetCommands {
     #[command(alias = "per", alias = "p")]
     Percent {
-        #[arg()]
-        value: u32,
+        #[arg(allow_hyphen_values = true)]
+        value: String,
     },
     #[command(alias = "m")]
     Mute {
@@ -94,7 +94,8 @@ impl Volume {
 
     pub fn set_percent(percent_string: String) -> Result<(), DaemonError> {
         // If the percentage is a change, figure out the true percentage
-        let linear_percent = if percent_string.starts_with("+") || percent_string.starts_with("'") {
+        let linear_percent = if percent_string.starts_with("+") || percent_string.starts_with("-") {
+            // Get the value of the percentage
             let delta_percent = percent_string
                 .trim_start_matches("+")
                 .trim_start_matches("-")
@@ -103,10 +104,9 @@ impl Volume {
 
             let current_percent = Self::get_percent()? as f64;
 
-            let first_char = percent_string.chars().next();
-
+            // Depending on the first char, add or subtract the percentage
             (current_percent
-                + match first_char {
+                + match percent_string.chars().next() {
                     Some('+') => delta_percent,
                     Some('-') => -delta_percent,
                     _ => 0.0,
@@ -205,7 +205,7 @@ impl Volume {
         match commands {
             VolumeSetCommands::Percent { value } => DaemonMessage::Set {
                 item: DaemonItem::Volume(VolumeItem::Percent),
-                value: value.to_string(),
+                value,
             },
             VolumeSetCommands::Mute { value } => DaemonMessage::Set {
                 item: DaemonItem::Volume(VolumeItem::Mute),
