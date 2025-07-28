@@ -6,7 +6,10 @@ use tokio::{
     net::{UnixListener, UnixStream},
 };
 
-use crate::error::DaemonError;
+use crate::{
+    error::DaemonError,
+    volume::{Volume, VolumeItem},
+};
 
 // pub const IP_AND_PORT: &str = "127.0.0.1:6969";
 pub const SOCKET_PATH: &str = "/tmp/bar_daemon.sock";
@@ -20,13 +23,20 @@ pub enum DaemonMessage {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum DaemonReply {
-    Value { item: DaemonItem, value: String },
+    Value {
+        item: DaemonItem,
+        value: String,
+    },
+    Tuples {
+        item: DaemonItem,
+        tuples: Vec<(String, String)>,
+    },
     Error(String),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum DaemonItem {
-    Volume,
+    Volume(VolumeItem),
 }
 
 pub async fn do_daemon() -> Result<(), DaemonError> {
@@ -58,11 +68,10 @@ pub async fn do_daemon() -> Result<(), DaemonError> {
                 };
 
                 let message: DaemonMessage = postcard::from_bytes(&buf[..n]).unwrap();
-                println!("{message:?}");
 
                 let reply = match message {
-                    DaemonMessage::Set { item, value } => match_set_command(item.clone(), value.clone()).await,
-                    DaemonMessage::Get { item } => match_get_command(item.clone()).await,
+                    DaemonMessage::Set { item, value } => match_set_command(item.clone(), value.clone()).await.unwrap(),
+                    DaemonMessage::Get { item } => match_get_command(item.clone()).await.unwrap(),
                 };
 
                 // Send the reply back
@@ -95,23 +104,21 @@ pub async fn shutdown_daemon() {
     let _ = std::fs::remove_file(SOCKET_PATH);
 }
 
-pub async fn match_set_command(item: DaemonItem, value: String) -> DaemonReply {
-    match item {
-        DaemonItem::Volume => println!("Set Volume {value}"),
-    }
-
-    // TODO
-    DaemonReply::Value { item, value }
+// TODO
+pub async fn match_set_command(item: DaemonItem, value: String) -> Result<DaemonReply, DaemonError> {
+    Ok(match item.clone() {
+        DaemonItem::Volume(_) => Volume::parse_item(item.clone(), Some(value))?,
+    })
 }
 
-pub async fn match_get_command(item: DaemonItem) -> DaemonReply {
-    match item {
-        DaemonItem::Volume => println!("Get Volume"),
-    }
+pub async fn match_get_command(item: DaemonItem) -> Result<DaemonReply, DaemonError> {
+    Ok(match item.clone() {
+        DaemonItem::Volume(_) => Volume::parse_item(item.clone(), None)?,
+    })
 
-    // TODO
-    DaemonReply::Value {
-        item,
-        value: "The value you have gotten".to_string(),
-    }
+    // // TODO
+    // DaemonReply::Value {
+    //     item,
+    //     value: "The value you have gotten".to_string(),
+    // }
 }

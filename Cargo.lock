@@ -103,6 +103,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "futures-util",
+ "log_to_linear",
  "postcard",
  "serde",
  "thiserror 1.0.69",
@@ -310,6 +311,10 @@ dependencies = [
  "autocfg",
  "scopeguard",
 ]
+
+[[package]]
+name = "log_to_linear"
+version = "0.1.0"
 
 [[package]]
 name = "memchr"

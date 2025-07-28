@@ -1,8 +1,9 @@
 use clap::{Parser, Subcommand};
 
 use crate::{
-    daemon::{do_daemon, send_daemon_messaage, DaemonItem, DaemonMessage},
+    daemon::{do_daemon, send_daemon_messaage},
     error::DaemonError,
+    volume::{Volume, VolumeGetCommands, VolumeSetCommands},
 };
 
 #[derive(Parser)]
@@ -30,15 +31,18 @@ pub enum CliCommands {
 pub enum SetCommands {
     #[command(alias = "vol", alias = "v")]
     Volume {
-        #[arg()]
-        value: String,
+        #[command(subcommand)]
+        commands: VolumeSetCommands,
     },
 }
 
 #[derive(Subcommand)]
 pub enum GetCommands {
     #[command(alias = "vol", alias = "v")]
-    Volume,
+    Volume {
+        #[command(subcommand)]
+        commands: Option<VolumeGetCommands>,
+    },
 }
 
 pub async fn match_cli() -> Result<(), DaemonError> {
@@ -46,16 +50,16 @@ pub async fn match_cli() -> Result<(), DaemonError> {
 
     let message_to_send = match cli.commands {
         CliCommands::Get { commands } => match commands {
-            GetCommands::Volume => DaemonMessage::Get {
-                item: DaemonItem::Volume,
-            },
+            GetCommands::Volume { commands } => Volume::match_get_commands(commands),
         },
-        CliCommands::Set { commands } => match commands {
-            SetCommands::Volume { value } => DaemonMessage::Set {
-                item: DaemonItem::Volume,
-                value,
-            },
-        },
+        CliCommands::Set { commands } => {
+            // TODO
+            match commands {
+                SetCommands::Volume { commands } => Volume::match_set_commands(commands),
+            };
+
+            unreachable!()
+        }
         CliCommands::Listen => {
             println!("Listen");
             unreachable!()
