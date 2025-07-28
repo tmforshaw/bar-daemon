@@ -39,7 +39,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "bar-daemon"
+name = "bar_daemon"
 version = "0.1.0"
 dependencies = [
  "log_to_linear",
