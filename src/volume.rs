@@ -77,7 +77,7 @@ impl Volume {
         let mut output_split = output.trim_start_matches("Volume: ").split_whitespace(); // Left with only volume number, and muted status
 
         // Get the mute state from the second part of the split
-        let mute = output_split.next().is_some();
+        let mute = output_split.nth(1).is_some();
 
         Ok((*VOLUME_PERCENT.lock().map_err(|_| DaemonError::MutexLockError)?, mute))
     }
