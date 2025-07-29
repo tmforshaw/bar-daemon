@@ -21,15 +21,19 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum CliCommands {
+    #[command(alias = "g")]
     Get {
         #[command(subcommand)]
         commands: Option<GetCommands>,
     },
+    #[command(alias = "s")]
     Set {
         #[command(subcommand)]
         commands: SetCommands,
     },
+    #[command(alias = "lis", alias = "l")]
     Listen,
+    #[command(alias = "dae", alias = "d")]
     Daemon,
 }
 

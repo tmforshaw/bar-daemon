@@ -28,4 +28,11 @@ pub enum DaemonError {
 
     #[error("Serde JSON Serialization Failed:\n\t{0}")]
     JsonError(#[from] serde_json::Error),
+
+    // TODO
+    #[error("Serde JSON Serialization Failed:\n\t{0}")]
+    IntErro(#[from] std::num::TryFromIntError),
+
+    #[error("Mutex couldn't be locked")]
+    MutexLockError,
 }

@@ -1,3 +1,5 @@
+use std::sync::{LazyLock, Mutex};
+
 use crate::{
     cli::parse_bool,
     command,
@@ -42,10 +44,19 @@ pub enum VolumeItem {
     All,
 }
 
+static VOLUME_PERCENT: LazyLock<Mutex<u32>> = LazyLock::new(|| {
+    let percent = Volume::get_percent_true().unwrap_or_else(|e| panic!("Error setting inital VOLUME_PERCENT:\n\t{e}"));
+
+    Mutex::new(percent)
+});
+
 pub struct Volume;
 
 impl Volume {
-    fn get() -> Result<(u32, bool), DaemonError> {
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
+    fn get_percent_true() -> Result<u32, DaemonError> {
         // Get the volume and mute status as a string
         let output = command::run("wpctl", &["get-volume", "@DEFAULT_SINK@"])?;
         let mut output_split = output.trim_start_matches("Volume: ").split_whitespace(); // Left with only volume number, and muted status
@@ -57,19 +68,24 @@ impl Volume {
             return Err(DaemonError::ParseError(output));
         };
 
+        Ok(percent)
+    }
+
+    fn get() -> Result<(u32, bool), DaemonError> {
+        // Get the volume and mute status as a string
+        let output = command::run("wpctl", &["get-volume", "@DEFAULT_SINK@"])?;
+        let mut output_split = output.trim_start_matches("Volume: ").split_whitespace(); // Left with only volume number, and muted status
+
         // Get the mute state from the second part of the split
         let mute = output_split.next().is_some();
 
-        Ok((percent, mute))
+        Ok((*VOLUME_PERCENT.lock().map_err(|_| DaemonError::MutexLockError)?, mute))
     }
 
     /// # Errors
-    /// Returns an error if the command cannot be spawned
-    /// Returns an error if values in the output of the command cannot be parsed
+    /// Returns an error if the memorised volume mutex  cannot be locked
     pub fn get_percent() -> Result<u32, DaemonError> {
-        let (percent, _) = Self::get()?;
-
-        Ok(percent)
+        Ok(*VOLUME_PERCENT.lock().map_err(|_| DaemonError::MutexLockError)?)
     }
 
     /// # Errors
@@ -88,27 +104,39 @@ impl Volume {
         // If the percentage is a change, figure out the true percentage
         let linear_percent = if percent_string.starts_with('+') || percent_string.starts_with('-') {
             // Get the value of the percentage
-            let delta_percent = percent_string
-                .trim_start_matches('+')
-                .trim_start_matches('-')
-                .to_string()
-                .parse::<f64>()?;
+            let delta_percent = i32::try_from(
+                percent_string
+                    .trim_start_matches('+')
+                    .trim_start_matches('-')
+                    .to_string()
+                    .parse::<u32>()?,
+            )?;
 
-            let current_percent = f64::from(Self::get_percent()?);
+            // Adjust the currently memorised volume
+            let new_percent = {
+                (i32::try_from(*VOLUME_PERCENT.lock().map_err(|_| DaemonError::MutexLockError)?)?
+                    + match percent_string.chars().next() {
+                        Some('+') => delta_percent,
+                        Some('-') => -delta_percent,
+                        _ => 0,
+                    })
+                .clamp(0, 100) as u32
+            };
 
-            // Depending on the first char, add or subtract the percentage
-            (current_percent
-                + match percent_string.chars().next() {
-                    Some('+') => delta_percent,
-                    Some('-') => -delta_percent,
-                    _ => 0.0,
-                })
-            .clamp(0.0, 100.0)
+            new_percent
         } else {
-            percent_string.parse::<f64>()?
+            percent_string.parse::<u32>()?
         };
 
-        let logarithmic_percent = linear_to_logarithmic(linear_percent);
+        // Set the memorised volume
+        {
+            let mut current_vol = VOLUME_PERCENT.lock().map_err(|_| DaemonError::MutexLockError)?;
+
+            *current_vol = linear_percent;
+        }
+
+        // Set the volume internally as a logarithmic value
+        let logarithmic_percent = linear_to_logarithmic(f64::from(linear_percent));
 
         // Set the volume
         let _ = command::run(
