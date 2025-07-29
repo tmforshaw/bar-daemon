@@ -6,6 +6,7 @@ use crate::{
     brightness::{Brightness, BrightnessGetCommands, BrightnessSetCommands},
     daemon::{do_daemon, send_daemon_messaage, DaemonItem, DaemonMessage},
     error::DaemonError,
+    fan_profile::{FanProfile, FanProfileGetCommands, FanProfileSetCommands},
     listener::listen,
     ram::{Ram, RamGetCommands},
     volume::{Volume, VolumeGetCommands, VolumeSetCommands},
@@ -49,6 +50,18 @@ pub enum SetCommands {
         #[command(subcommand)]
         commands: BluetoothSetCommands,
     },
+    #[command(
+        alias = "fan",
+        alias = "profile",
+        alias = "f",
+        alias = "fp",
+        alias = "prof",
+        alias = "fanprof"
+    )]
+    FanProfile {
+        #[command(subcommand)]
+        commands: FanProfileSetCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -78,6 +91,18 @@ pub enum GetCommands {
         #[command(subcommand)]
         commands: Option<RamGetCommands>,
     },
+    #[command(
+        alias = "fan",
+        alias = "profile",
+        alias = "f",
+        alias = "fp",
+        alias = "prof",
+        alias = "fanprof"
+    )]
+    FanProfile {
+        #[command(subcommand)]
+        commands: FanProfileGetCommands,
+    },
     #[command(alias = "a")]
     All,
 }
@@ -98,6 +123,7 @@ pub async fn match_cli() -> Result<(), DaemonError> {
                     GetCommands::Bluetooth { commands } => Bluetooth::match_get_commands(&commands),
                     GetCommands::Battery { commands } => Battery::match_get_commands(&commands),
                     GetCommands::Ram { commands } => Ram::match_get_commands(&commands),
+                    GetCommands::FanProfile { commands } => FanProfile::match_get_commands(&commands),
                     GetCommands::All => DaemonMessage::Get { item: DaemonItem::All },
                 }
             } else {
@@ -108,6 +134,7 @@ pub async fn match_cli() -> Result<(), DaemonError> {
             SetCommands::Volume { commands } => Volume::match_set_commands(commands),
             SetCommands::Brightness { commands } => Brightness::match_set_commands(commands),
             SetCommands::Bluetooth { commands } => Bluetooth::match_set_commands(&commands),
+            SetCommands::FanProfile { commands } => FanProfile::match_set_commands(commands),
         },
         CliCommands::Listen => {
             listen().await?;

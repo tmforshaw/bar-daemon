@@ -13,6 +13,7 @@ use crate::{
     bluetooth::{Bluetooth, BluetoothItem},
     brightness::{Brightness, BrightnessItem},
     error::DaemonError,
+    fan_profile::{FanProfile, FanProfileItem},
     listener::{handle_clients, Client, SharedClients},
     ram::{Ram, RamItem},
     volume::{Volume, VolumeItem},
@@ -51,6 +52,7 @@ pub enum DaemonItem {
     Bluetooth(BluetoothItem),
     Battery(BatteryItem),
     Ram(RamItem),
+    FanProfile(FanProfileItem),
     All,
 }
 
@@ -150,6 +152,7 @@ pub fn match_set_command(item: DaemonItem, value: String) -> Result<DaemonReply,
         DaemonItem::Volume(volume_item) => Volume::parse_item(item, &volume_item, Some(value))?,
         DaemonItem::Brightness(brightness_item) => Brightness::parse_item(item, &brightness_item, Some(value))?,
         DaemonItem::Bluetooth(bluetooth_item) => Bluetooth::parse_item(item, &bluetooth_item, Some(value))?,
+        DaemonItem::FanProfile(fan_profile_item) => FanProfile::parse_item(item, &fan_profile_item, Some(value))?,
         _ => DaemonReply::Value { item, value },
     };
 
@@ -165,6 +168,8 @@ pub async fn match_get_command(item: DaemonItem) -> Result<DaemonReply, DaemonEr
         DaemonItem::Bluetooth(bluetooth_item) => Bluetooth::parse_item(item.clone(), &bluetooth_item, None)?,
         DaemonItem::Battery(battery_item) => Battery::parse_item(item.clone(), &battery_item)?,
         DaemonItem::Ram(ram_item) => Ram::parse_item(item.clone(), &ram_item)?,
+        DaemonItem::FanProfile(fan_profile_item) => FanProfile::parse_item(item.clone(), &fan_profile_item, None)?,
+
         DaemonItem::All => DaemonReply::AllTuples {
             tuples: get_all_tuples().await?,
         },
@@ -182,5 +187,6 @@ pub async fn get_all_tuples() -> Result<Vec<(String, Vec<(String, String)>)>, Da
         ("bluetooth".to_string(), Bluetooth::get_tuples()?),
         ("battery".to_string(), Battery::get_tuples()?),
         ("ram".to_string(), Ram::get_tuples()?),
+        ("fan_profile".to_string(), FanProfile::get_tuples()?),
     ])
 }

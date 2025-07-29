@@ -17,6 +17,7 @@ pub mod cli;
 pub mod command;
 pub mod daemon;
 pub mod error;
+pub mod fan_profile;
 pub mod listener;
 pub mod ram;
 pub mod volume;
