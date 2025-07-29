@@ -58,7 +58,7 @@ pub enum GetCommands {
     #[command(alias = "bri")]
     Brightness {
         #[command(subcommand)]
-        commands: BrightnessGetCommands,
+        commands: Option<BrightnessGetCommands>,
     },
     #[command(alias = "blue", alias = "blu", alias = "bt")]
     Bluetooth {
