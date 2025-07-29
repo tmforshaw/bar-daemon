@@ -1,57 +1,178 @@
-use crate::command;
-use crate::command::ServerError;
+use clap::{ArgAction, Subcommand};
+use serde::{Deserialize, Serialize};
 
-use std::sync::Arc;
+use crate::{
+    command,
+    daemon::{DaemonItem, DaemonMessage, DaemonReply},
+    error::DaemonError,
+    ICON_END, ICON_EXT, NOTIFICATION_ID, NOTIFICATION_TIMEOUT,
+};
 
-pub struct Bluetooth {}
+#[derive(Subcommand)]
+pub enum BluetoothGetCommands {
+    #[command(alias = "s")]
+    State,
+    #[command(alias = "i")]
+    Icon,
+}
+
+#[derive(Subcommand)]
+pub enum BluetoothSetCommands {
+    #[command(alias = "s")]
+    State {
+        #[arg(required = true, action = ArgAction::Set, value_parser = parse_bool)]
+        value: bool,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+pub enum BluetoothItem {
+    State,
+    Icon,
+    All,
+}
+
+fn parse_bool(s: &str) -> Result<bool, String> {
+    match s.to_lowercase().as_str() {
+        "true" | "1" => Ok(true),
+        "false" | "0" => Ok(false),
+        other => Err(format!("Invalid value '{other}' for boolean. Use true/false or 1/0.")),
+    }
+}
+
+pub struct Bluetooth;
 
 impl Bluetooth {
-    fn get_state() -> Result<bool, Arc<ServerError>> {
-        command::run("bluetooth", &[])?
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
+    pub fn get_state() -> Result<bool, DaemonError> {
+        let output = command::run("bluetooth", &[])?;
+
+        // Split the output and check if it is on or off
+        output
+            .clone()
             .split_whitespace()
             .nth(2)
-            .map_or_else(|| todo!(), |value| Ok(value == "on"))
+            .map_or(Err(DaemonError::ParseError(output)), |state| Ok(state == "on"))
     }
 
-    fn get_icon(state: bool) -> String {
-        format!(
-            "bluetooth-{}{}",
-            if state { "active" } else { "disabled" },
-            crate::ICON_EXT
-        )
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    pub fn set_state(state: bool) -> Result<(), DaemonError> {
+        command::run("bluetooth", &[(if state { "on" } else { "off" }).to_string().as_str()])?;
+
+        Ok(())
     }
 
-    pub fn update() -> Result<Vec<(String, String)>, Arc<ServerError>> {
-        Self::get_json_tuple()
+    #[must_use]
+    pub fn get_icon(state: bool) -> String {
+        format!("bluetooth-{}", if state { "active" } else { "disabled" })
     }
 
-    pub fn get_json_tuple() -> Result<Vec<(String, String)>, Arc<ServerError>> {
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
+    pub fn get_tuples() -> Result<Vec<(String, String)>, DaemonError> {
         let state = Self::get_state()?;
         let icon = Self::get_icon(state);
 
         Ok(vec![
             ("state".to_string(), state.to_string()),
-            ("icon".to_string(), icon),
+            ("icon".to_string(), format!("{icon}{ICON_EXT}")),
         ])
     }
 
-    pub fn parse_args(
-        vec_tup: &[(String, String)],
-        args: &[String],
-    ) -> Result<String, Arc<ServerError>> {
-        args.first().map_or_else(
-            || Err(Arc::from(ServerError::EmptyArguments)),
-            |argument| match argument.as_str() {
-                "state" | "s" => Ok(vec_tup[0].1.clone()),
-                "icon" | "i" => Ok(vec_tup[1].1.clone()),
-                incorrect => Err(Arc::from(ServerError::IncorrectArgument {
-                    incorrect: incorrect.to_string(),
-                    valid: ["state", "icon"]
-                        .iter()
-                        .map(std::string::ToString::to_string)
-                        .collect(),
-                })),
+    /// # Errors
+    /// Returns an error if the requested value could not be parsed
+    pub fn parse_item(
+        item: DaemonItem,
+        bluetooth_item: &BluetoothItem,
+        value: Option<String>,
+    ) -> Result<DaemonReply, DaemonError> {
+        Ok(if let Some(value) = value {
+            let prev_state = Self::get_state()?;
+            let new_state = value.parse::<bool>()?;
+
+            // Set value
+            if bluetooth_item == &BluetoothItem::State {
+                Self::set_state(new_state)?;
+            }
+
+            if prev_state != new_state {
+                // Do a notification
+                Self::notify()?;
+            }
+
+            DaemonReply::Value { item, value }
+        } else {
+            // Get value
+            match bluetooth_item {
+                BluetoothItem::State => DaemonReply::Value {
+                    item,
+                    value: Self::get_state()?.to_string(),
+                },
+                BluetoothItem::Icon => {
+                    let state = Self::get_state()?;
+
+                    DaemonReply::Value {
+                        item,
+                        value: Self::get_icon(state),
+                    }
+                }
+                BluetoothItem::All => DaemonReply::Tuples {
+                    item,
+                    tuples: Self::get_tuples()?,
+                },
+            }
+        })
+    }
+
+    #[must_use]
+    pub const fn match_get_commands(commands: &Option<BluetoothGetCommands>) -> DaemonMessage {
+        DaemonMessage::Get {
+            item: match commands {
+                Some(commands) => match commands {
+                    BluetoothGetCommands::State => DaemonItem::Bluetooth(BluetoothItem::State),
+                    BluetoothGetCommands::Icon => DaemonItem::Bluetooth(BluetoothItem::Icon),
+                },
+                None => DaemonItem::Bluetooth(BluetoothItem::All),
             },
-        )
+        }
+    }
+
+    #[must_use]
+    pub fn match_set_commands(commands: &BluetoothSetCommands) -> DaemonMessage {
+        match commands {
+            BluetoothSetCommands::State { value } => DaemonMessage::Set {
+                item: DaemonItem::Bluetooth(BluetoothItem::State),
+                value: value.to_string(),
+            },
+        }
+    }
+
+    /// # Errors
+    /// Returns an error if the requested value could not be parsed
+    pub fn notify() -> Result<(), DaemonError> {
+        let state = Self::get_state()?;
+
+        let icon = Self::get_icon(state);
+
+        command::run(
+            "dunstify",
+            &[
+                "-u",
+                "normal",
+                "-r",
+                format!("{NOTIFICATION_ID}").as_str(),
+                "-i",
+                format!("{}{ICON_END}", icon.trim()).as_str(),
+                "-t",
+                format!("{NOTIFICATION_TIMEOUT}").as_str(),
+                format!("Bluetooth: {}", if state { "on" } else { "off" }).as_str(),
+            ],
+        )?;
+
+        Ok(())
     }
 }
