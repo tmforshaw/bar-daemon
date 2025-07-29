@@ -5,7 +5,7 @@ use crate::{
     command,
     daemon::{DaemonItem, DaemonMessage, DaemonReply},
     error::DaemonError,
-    ICON_EXT, NOTIFICATION_ID, NOTIFICATION_TIMEOUT,
+    ICON_END, ICON_EXT, NOTIFICATION_ID, NOTIFICATION_TIMEOUT,
 };
 
 const MONITOR_ID: &str = "nvidia_wmi_ec_backlight";
@@ -247,7 +247,7 @@ impl Brightness {
                 "-r",
                 format!("{NOTIFICATION_ID}").as_str(),
                 "-i",
-                format!("{icon}-symbolic").as_str(),
+                format!("{icon}{ICON_END}").as_str(),
                 "-t",
                 format!("{NOTIFICATION_TIMEOUT}").as_str(),
                 "-h",

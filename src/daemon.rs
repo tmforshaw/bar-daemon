@@ -7,6 +7,7 @@ use tokio::{
 };
 
 use crate::{
+    battery::{Battery, BatteryItem},
     bluetooth::{Bluetooth, BluetoothItem},
     brightness::{Brightness, BrightnessItem},
     error::DaemonError,
@@ -41,6 +42,7 @@ pub enum DaemonItem {
     Volume(VolumeItem),
     Brightness(BrightnessItem),
     Bluetooth(BluetoothItem),
+    Battery(BatteryItem),
 }
 
 pub async fn do_daemon() -> Result<(), DaemonError> {
@@ -113,6 +115,7 @@ pub async fn match_set_command(item: DaemonItem, value: String) -> Result<Daemon
         DaemonItem::Volume(volume_item) => Volume::parse_item(item.clone(), volume_item, Some(value))?,
         DaemonItem::Brightness(brightness_item) => Brightness::parse_item(item.clone(), brightness_item, Some(value))?,
         DaemonItem::Bluetooth(bluetooth_item) => Bluetooth::parse_item(item.clone(), bluetooth_item, Some(value))?,
+        _ => DaemonReply::Value { item, value },
     };
 
     Ok(message)
@@ -123,6 +126,7 @@ pub async fn match_get_command(item: DaemonItem) -> Result<DaemonReply, DaemonEr
         DaemonItem::Volume(volume_item) => Volume::parse_item(item.clone(), volume_item, None)?,
         DaemonItem::Brightness(brightness_item) => Brightness::parse_item(item.clone(), brightness_item, None)?,
         DaemonItem::Bluetooth(bluetooth_item) => Bluetooth::parse_item(item.clone(), bluetooth_item, None)?,
+        DaemonItem::Battery(battery_item) => Battery::parse_item(item.clone(), battery_item)?,
     };
 
     Ok(message)

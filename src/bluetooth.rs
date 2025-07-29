@@ -5,7 +5,7 @@ use crate::{
     command,
     daemon::{DaemonItem, DaemonMessage, DaemonReply},
     error::DaemonError,
-    ICON_EXT, NOTIFICATION_ID, NOTIFICATION_TIMEOUT,
+    ICON_END, ICON_EXT, NOTIFICATION_ID, NOTIFICATION_TIMEOUT,
 };
 
 #[derive(Subcommand)]
@@ -154,7 +154,7 @@ impl Bluetooth {
                 "-r",
                 format!("{NOTIFICATION_ID}").as_str(),
                 "-i",
-                format!("{}-symbolic", icon.trim()).as_str(),
+                format!("{}{ICON_END}", icon.trim()).as_str(),
                 "-t",
                 format!("{NOTIFICATION_TIMEOUT}").as_str(),
                 format!("Bluetooth: {}", if state { "on" } else { "off" }).as_str(),
