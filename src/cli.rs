@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 
 use crate::{
+    bluetooth::{Bluetooth, BluetoothGetCommands, BluetoothSetCommands},
+    brightness::{Brightness, BrightnessGetCommands, BrightnessSetCommands},
     daemon::{do_daemon, send_daemon_messaage},
     error::DaemonError,
     volume::{Volume, VolumeGetCommands, VolumeSetCommands},
@@ -34,6 +36,16 @@ pub enum SetCommands {
         #[command(subcommand)]
         commands: VolumeSetCommands,
     },
+    #[command(alias = "bri")]
+    Brightness {
+        #[command(subcommand)]
+        commands: BrightnessSetCommands,
+    },
+    #[command(alias = "blue", alias = "blu", alias = "bt")]
+    Bluetooth {
+        #[command(subcommand)]
+        commands: BluetoothSetCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -43,6 +55,16 @@ pub enum GetCommands {
         #[command(subcommand)]
         commands: Option<VolumeGetCommands>,
     },
+    #[command(alias = "bri")]
+    Brightness {
+        #[command(subcommand)]
+        commands: BrightnessGetCommands,
+    },
+    #[command(alias = "blue", alias = "blu", alias = "bt")]
+    Bluetooth {
+        #[command(subcommand)]
+        commands: Option<BluetoothGetCommands>,
+    },
 }
 
 pub async fn match_cli() -> Result<(), DaemonError> {
@@ -51,9 +73,13 @@ pub async fn match_cli() -> Result<(), DaemonError> {
     let message_to_send = match cli.commands {
         CliCommands::Get { commands } => match commands {
             GetCommands::Volume { commands } => Volume::match_get_commands(commands),
+            GetCommands::Brightness { commands } => Brightness::match_get_commands(commands),
+            GetCommands::Bluetooth { commands } => Bluetooth::match_get_commands(commands),
         },
         CliCommands::Set { commands } => match commands {
             SetCommands::Volume { commands } => Volume::match_set_commands(commands),
+            SetCommands::Brightness { commands } => Brightness::match_set_commands(commands),
+            SetCommands::Bluetooth { commands } => Bluetooth::match_set_commands(commands),
         },
         CliCommands::Listen => {
             println!("Listen");
@@ -68,7 +94,6 @@ pub async fn match_cli() -> Result<(), DaemonError> {
     };
 
     let reply = send_daemon_messaage(message_to_send).await?;
-
     println!("{reply:?}");
 
     Ok(())

@@ -7,6 +7,8 @@ use tokio::{
 };
 
 use crate::{
+    bluetooth::{Bluetooth, BluetoothItem},
+    brightness::{Brightness, BrightnessItem},
     error::DaemonError,
     volume::{Volume, VolumeItem},
 };
@@ -37,6 +39,8 @@ pub enum DaemonReply {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum DaemonItem {
     Volume(VolumeItem),
+    Brightness(BrightnessItem),
+    Bluetooth(BluetoothItem),
 }
 
 pub async fn do_daemon() -> Result<(), DaemonError> {
@@ -105,17 +109,21 @@ pub async fn send_daemon_messaage(message: DaemonMessage) -> Result<DaemonReply,
 // }
 
 pub async fn match_set_command(item: DaemonItem, value: String) -> Result<DaemonReply, DaemonError> {
-    let message = Ok(match item.clone() {
-        DaemonItem::Volume(_) => Volume::parse_item(item.clone(), Some(value))?,
-    });
+    let message = match item.clone() {
+        DaemonItem::Volume(volume_item) => Volume::parse_item(item.clone(), volume_item, Some(value))?,
+        DaemonItem::Brightness(brightness_item) => Brightness::parse_item(item.clone(), brightness_item, Some(value))?,
+        DaemonItem::Bluetooth(bluetooth_item) => Bluetooth::parse_item(item.clone(), bluetooth_item, Some(value))?,
+    };
 
-    Volume::notify()?;
-
-    message
+    Ok(message)
 }
 
 pub async fn match_get_command(item: DaemonItem) -> Result<DaemonReply, DaemonError> {
-    Ok(match item.clone() {
-        DaemonItem::Volume(_) => Volume::parse_item(item.clone(), None)?,
-    })
+    let message = match item.clone() {
+        DaemonItem::Volume(volume_item) => Volume::parse_item(item.clone(), volume_item, None)?,
+        DaemonItem::Brightness(brightness_item) => Brightness::parse_item(item.clone(), brightness_item, None)?,
+        DaemonItem::Bluetooth(bluetooth_item) => Bluetooth::parse_item(item.clone(), bluetooth_item, None)?,
+    };
+
+    Ok(message)
 }

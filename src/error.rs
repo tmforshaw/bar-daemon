@@ -11,8 +11,11 @@ pub enum DaemonError {
     #[error("Command '{name}' With Args '{args:?}' Could Not Run:\n\t{e}")]
     CommandError { name: String, args: Vec<String>, e: String },
 
-    #[error("String To Integer Error:\n\t{0}")]
-    IntegerFromString(#[from] std::string::FromUtf8Error),
+    #[error("Bytes Could Not Convert To String:\n\t{0}")]
+    IntegerFromByteString(#[from] std::string::FromUtf8Error),
+
+    #[error("String Could Not Convert To Integer:\n\t{0}")]
+    IntegerFromString(#[from] std::num::ParseIntError),
 
     #[error("String Could Not Convert To Bool:\n\t{0}")]
     BoolFromString(#[from] std::str::ParseBoolError),

@@ -2,7 +2,7 @@ use crate::{
     command,
     daemon::{DaemonItem, DaemonMessage, DaemonReply},
     error::DaemonError,
-    NOTIFICATION_ID, NOTIFICATION_TIMEOUT,
+    ICON_EXT, NOTIFICATION_ID, NOTIFICATION_TIMEOUT,
 };
 
 use clap::Subcommand;
@@ -64,7 +64,7 @@ impl Volume {
 
     pub fn get_icon(percent: u32, muted: bool) -> String {
         format!(
-            "audio-volume-{}{}",
+            "audio-volume-{}",
             if muted {
                 "muted"
             } else {
@@ -75,8 +75,7 @@ impl Volume {
                     68..=100 => "high",
                     101.. => "overamplified",
                 }
-            },
-            crate::ICON_EXT
+            }
         )
     }
 
@@ -143,46 +142,51 @@ impl Volume {
         Ok(vec![
             ("percent".to_string(), percent.to_string()),
             ("mute_state".to_string(), mute_state.to_string()),
-            ("icon".to_string(), icon.to_string()),
+            ("icon".to_string(), format!("{icon}{ICON_EXT}")),
         ])
     }
 
-    pub fn parse_item(item: DaemonItem, value: Option<String>) -> Result<DaemonReply, DaemonError> {
+    pub fn parse_item(item: DaemonItem, volume_item: VolumeItem, value: Option<String>) -> Result<DaemonReply, DaemonError> {
         Ok(if let Some(value) = value {
+            let prev_percent_and_mute = Self::get()?;
+
             // Set value
-            match item.clone() {
-                DaemonItem::Volume(volume_item) => match volume_item {
-                    VolumeItem::Percent => Volume::set_percent(value.clone())?,
-                    VolumeItem::Mute => Volume::set_mute(value.clone())?,
-                    _ => {}
-                },
+            match volume_item {
+                VolumeItem::Percent => Self::set_percent(value.clone())?,
+                VolumeItem::Mute => Self::set_mute(value.clone())?,
+                _ => {}
             };
+
+            let new_percent_and_mute = Self::get()?;
+
+            if prev_percent_and_mute != new_percent_and_mute {
+                // Do a notification
+                Self::notify()?;
+            }
 
             DaemonReply::Value { item, value }
         } else {
             // Get value
-            match item.clone() {
-                DaemonItem::Volume(volume_item) => match volume_item {
-                    VolumeItem::Percent => DaemonReply::Value {
-                        item,
-                        value: Self::get_percent()?.to_string(),
-                    },
-                    VolumeItem::Mute => DaemonReply::Value {
-                        item,
-                        value: Self::get_mute()?.to_string(),
-                    },
-                    VolumeItem::Icon => {
-                        let (percent, muted) = Self::get()?;
+            match volume_item {
+                VolumeItem::Percent => DaemonReply::Value {
+                    item,
+                    value: Self::get_percent()?.to_string(),
+                },
+                VolumeItem::Mute => DaemonReply::Value {
+                    item,
+                    value: Self::get_mute()?.to_string(),
+                },
+                VolumeItem::Icon => {
+                    let (percent, muted) = Self::get()?;
 
-                        DaemonReply::Value {
-                            item,
-                            value: Self::get_icon(percent, muted),
-                        }
-                    }
-                    VolumeItem::All => DaemonReply::Tuples {
+                    DaemonReply::Value {
                         item,
-                        tuples: Self::get_tuples()?,
-                    },
+                        value: Self::get_icon(percent, muted),
+                    }
+                }
+                VolumeItem::All => DaemonReply::Tuples {
+                    item,
+                    tuples: Self::get_tuples()?,
                 },
             }
         })
