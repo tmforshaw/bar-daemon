@@ -11,6 +11,7 @@ use crate::{
     bluetooth::{Bluetooth, BluetoothItem},
     brightness::{Brightness, BrightnessItem},
     error::DaemonError,
+    ram::{Ram, RamItem},
     volume::{Volume, VolumeItem},
 };
 
@@ -43,6 +44,7 @@ pub enum DaemonItem {
     Brightness(BrightnessItem),
     Bluetooth(BluetoothItem),
     Battery(BatteryItem),
+    Ram(RamItem),
 }
 
 pub async fn do_daemon() -> Result<(), DaemonError> {
@@ -127,6 +129,7 @@ pub async fn match_get_command(item: DaemonItem) -> Result<DaemonReply, DaemonEr
         DaemonItem::Brightness(brightness_item) => Brightness::parse_item(item.clone(), brightness_item, None)?,
         DaemonItem::Bluetooth(bluetooth_item) => Bluetooth::parse_item(item.clone(), bluetooth_item, None)?,
         DaemonItem::Battery(battery_item) => Battery::parse_item(item.clone(), battery_item)?,
+        DaemonItem::Ram(ram_item) => Ram::parse_item(item.clone(), ram_item)?,
     };
 
     Ok(message)

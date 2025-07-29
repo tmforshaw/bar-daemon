@@ -7,10 +7,11 @@ pub mod cli;
 pub mod command;
 pub mod daemon;
 pub mod error;
+pub mod ram;
 pub mod volume;
 
 pub const ICON_END: &str = "-symbolic";
-pub const ICON_EXT: &str = "-symbolic.svg";
+pub const ICON_EXT: &str = ".svg";
 
 pub const NOTIFICATION_ID: u32 = 42069;
 pub const NOTIFICATION_TIMEOUT: u32 = 1000;

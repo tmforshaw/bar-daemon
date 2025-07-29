@@ -6,6 +6,7 @@ use crate::{
     brightness::{Brightness, BrightnessGetCommands, BrightnessSetCommands},
     daemon::{do_daemon, send_daemon_messaage},
     error::DaemonError,
+    ram::{Ram, RamGetCommands},
     volume::{Volume, VolumeGetCommands, VolumeSetCommands},
 };
 
@@ -71,6 +72,11 @@ pub enum GetCommands {
         #[command(subcommand)]
         commands: Option<BatteryGetCommands>,
     },
+    #[command(alias = "r")]
+    Ram {
+        #[command(subcommand)]
+        commands: Option<RamGetCommands>,
+    },
 }
 
 pub async fn match_cli() -> Result<(), DaemonError> {
@@ -82,6 +88,7 @@ pub async fn match_cli() -> Result<(), DaemonError> {
             GetCommands::Brightness { commands } => Brightness::match_get_commands(commands),
             GetCommands::Bluetooth { commands } => Bluetooth::match_get_commands(commands),
             GetCommands::Battery { commands } => Battery::match_get_commands(commands),
+            GetCommands::Ram { commands } => Ram::match_get_commands(commands),
         },
         CliCommands::Set { commands } => match commands {
             SetCommands::Volume { commands } => Volume::match_set_commands(commands),
