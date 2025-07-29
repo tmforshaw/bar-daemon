@@ -5,7 +5,7 @@ use crate::{
     command,
     daemon::{DaemonItem, DaemonMessage, DaemonReply},
     error::DaemonError,
-    ICON_END, NOTIFICATION_ID, NOTIFICATION_TIMEOUT,
+    ICON_EXT, NOTIFICATION_ID, NOTIFICATION_TIMEOUT,
 };
 
 #[derive(PartialEq, Eq, Debug)]
@@ -125,14 +125,14 @@ impl Battery {
     #[must_use]
     pub fn get_icon(state: &BatteryState, percent: u32) -> String {
         if state == &BatteryState::NotCharging {
-            String::from("battery-missing")
+            "battery-missing".to_string()
         } else {
             format!(
-                "battery-level-{}{}",
+                "battery-{:0>3}{}",
                 percent / 10 * 10,
                 match state {
                     BatteryState::Charging => "-charging",
-                    BatteryState::FullyCharged => "-charged",
+                    // BatteryState::FullyCharged => "-charged",
                     _ => "",
                 }
             )
@@ -150,7 +150,7 @@ impl Battery {
             ("state".to_string(), BAT_STATE_STRINGS[state as usize].to_string()),
             ("percent".to_string(), percent.to_string()),
             ("time".to_string(), time),
-            ("icon".to_string(), format!("{icon}{ICON_END}")),
+            ("icon".to_string(), format!("{icon}{ICON_EXT}")),
         ])
     }
 
@@ -220,7 +220,7 @@ impl Battery {
                             "-t",
                             NOTIFICATION_TIMEOUT.to_string().as_str(),
                             "-i",
-                            format!("{icon}{ICON_END}").as_str(),
+                            icon.to_string().as_str(),
                             "-r",
                             NOTIFICATION_ID.to_string().as_str(),
                             "-h",

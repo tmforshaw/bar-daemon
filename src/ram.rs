@@ -8,7 +8,7 @@ use crate::{
     command,
     daemon::{DaemonItem, DaemonMessage, DaemonReply},
     error::DaemonError,
-    ICON_END,
+    ICON_END, ICON_EXT,
 };
 
 #[derive(Subcommand)]
@@ -129,7 +129,7 @@ impl Ram {
             ("total".to_string(), total.to_string()),
             ("used".to_string(), used.to_string()),
             ("percent".to_string(), percent.to_string()),
-            ("icon".to_string(), format!("{icon}{ICON_END}")),
+            ("icon".to_string(), format!("{icon}{ICON_EXT}")),
         ])
     }
 

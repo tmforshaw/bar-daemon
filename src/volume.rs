@@ -3,7 +3,7 @@ use crate::{
     command,
     daemon::{DaemonItem, DaemonMessage, DaemonReply},
     error::DaemonError,
-    ICON_END, ICON_EXT, NOTIFICATION_ID, NOTIFICATION_TIMEOUT,
+    ICON_EXT, NOTIFICATION_ID, NOTIFICATION_TIMEOUT,
 };
 
 use clap::{ArgAction, Subcommand};
@@ -61,24 +61,6 @@ impl Volume {
         let mute = output_split.next().is_some();
 
         Ok((percent, mute))
-    }
-
-    #[must_use]
-    pub fn get_icon(percent: u32, muted: bool) -> String {
-        format!(
-            "audio-volume-{}",
-            if muted {
-                "muted"
-            } else {
-                match percent {
-                    0 => "muted",
-                    1..=33 => "low",
-                    34..=67 => "medium",
-                    68..=100 => "high",
-                    101.. => "overamplified",
-                }
-            }
-        )
     }
 
     /// # Errors
@@ -153,6 +135,24 @@ impl Volume {
         Ok(())
     }
 
+    #[must_use]
+    pub fn get_icon(percent: u32, muted: bool) -> String {
+        format!(
+            "audio-volume-{}",
+            if muted {
+                "muted"
+            } else {
+                match percent {
+                    0 => "muted",
+                    1..=33 => "low",
+                    34..=67 => "medium",
+                    68..=100 => "high",
+                    101.. => "overamplified",
+                }
+            }
+        )
+    }
+
     /// # Errors
     /// Returns an error if the requested value could not be parsed
     pub fn get_tuples() -> Result<Vec<(String, String)>, DaemonError> {
@@ -172,8 +172,6 @@ impl Volume {
         Ok(if let Some(value) = value {
             let prev_percent_and_mute = Self::get()?;
 
-            println!("{prev_percent_and_mute:?}");
-
             // Set value
             match volume_item {
                 VolumeItem::Percent => Self::set_percent(value.as_str())?,
@@ -182,7 +180,6 @@ impl Volume {
             }
 
             let new_percent_and_mute = Self::get()?;
-            println!("{new_percent_and_mute:?}");
 
             if prev_percent_and_mute != new_percent_and_mute {
                 // Do a notification
@@ -260,7 +257,7 @@ impl Volume {
                 "-r",
                 format!("{NOTIFICATION_ID}").as_str(),
                 "-i",
-                format!("{}{ICON_END}", icon.trim()).as_str(),
+                icon.trim().to_string().as_str(),
                 "-t",
                 format!("{NOTIFICATION_TIMEOUT}").as_str(),
                 "-h",

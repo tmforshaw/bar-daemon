@@ -21,8 +21,8 @@ pub enum BluetoothGetCommands {
 pub enum BluetoothSetCommands {
     #[command(alias = "s")]
     State {
-        #[arg(required = true, action = ArgAction::Set, value_parser = parse_bool)]
-        value: bool,
+        #[arg(action = ArgAction::Set, value_parser = parse_bool)]
+        value: Option<bool>,
     },
 }
 
@@ -52,15 +52,27 @@ impl Bluetooth {
 
     /// # Errors
     /// Returns an error if the command cannot be spawned
-    pub fn set_state(state: bool) -> Result<(), DaemonError> {
-        command::run("bluetooth", &[(if state { "on" } else { "off" }).to_string().as_str()])?;
+    pub fn set_state(state: &str) -> Result<(), DaemonError> {
+        // Allow toggling of the bluetooth state
+        let state = match state {
+            "toggle" => "toggle",
+            _ => {
+                if state.parse::<bool>()? {
+                    "on"
+                } else {
+                    "off"
+                }
+            }
+        };
+
+        command::run("bluetooth", &[state])?;
 
         Ok(())
     }
 
     #[must_use]
     pub fn get_icon(state: bool) -> String {
-        format!("bluetooth-{}", if state { "active" } else { "disabled" })
+        format!("bluetooth-{}{ICON_END}", if state { "active" } else { "disabled" })
     }
 
     /// # Errors
@@ -85,12 +97,13 @@ impl Bluetooth {
     ) -> Result<DaemonReply, DaemonError> {
         Ok(if let Some(value) = value {
             let prev_state = Self::get_state()?;
-            let new_state = value.parse::<bool>()?;
 
             // Set value
             if bluetooth_item == &BluetoothItem::State {
-                Self::set_state(new_state)?;
+                Self::set_state(value.as_str())?;
             }
+
+            let new_state = Self::get_state()?;
 
             if prev_state != new_state {
                 // Do a notification
@@ -139,7 +152,7 @@ impl Bluetooth {
         match commands {
             BluetoothSetCommands::State { value } => DaemonMessage::Set {
                 item: DaemonItem::Bluetooth(BluetoothItem::State),
-                value: value.to_string(),
+                value: value.map_or("toggle".to_string(), |value| value.to_string()),
             },
         }
     }
@@ -159,7 +172,7 @@ impl Bluetooth {
                 "-r",
                 format!("{NOTIFICATION_ID}").as_str(),
                 "-i",
-                format!("{}{ICON_END}", icon.trim()).as_str(),
+                icon.trim().to_string().as_str(),
                 "-t",
                 format!("{NOTIFICATION_TIMEOUT}").as_str(),
                 format!("Bluetooth: {}", if state { "on" } else { "off" }).as_str(),

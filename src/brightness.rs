@@ -94,7 +94,7 @@ impl Brightness {
 
         if device_id == MONITOR_ID {
             format!(
-                "display-brightness-{}",
+                "display-brightness-{}{ICON_END}",
                 match percent {
                     0 => "off",
                     1..=33 => "low",
@@ -111,7 +111,7 @@ impl Brightness {
             };
 
             format!(
-                "keyboard-brightness{}",
+                "keyboard-brightness{}{ICON_END}",
                 if strength.is_empty() {
                     String::new()
                 } else {
@@ -149,7 +149,7 @@ impl Brightness {
 
         let new_monitor = Self::get_monitor()?;
 
-        if prev_monitor.partial_cmp(&new_monitor) == Some(cmp::Ordering::Equal) {
+        if prev_monitor.partial_cmp(&new_monitor) != Some(cmp::Ordering::Equal) {
             Self::notify(MONITOR_ID)?;
         }
 
@@ -166,7 +166,7 @@ impl Brightness {
 
         let new_keyboard = Self::get_keyboard()?;
 
-        if prev_keyboard.partial_cmp(&new_keyboard) == Some(cmp::Ordering::Equal) {
+        if prev_keyboard.partial_cmp(&new_keyboard) != Some(cmp::Ordering::Equal) {
             Self::notify(KEYBOARD_ID)?;
         }
 
@@ -273,12 +273,12 @@ impl Brightness {
                 "-r",
                 format!("{NOTIFICATION_ID}").as_str(),
                 "-i",
-                format!("{icon}{ICON_END}").as_str(),
+                icon.as_str(),
                 "-t",
                 format!("{NOTIFICATION_TIMEOUT}").as_str(),
                 "-h",
                 format!("int:value:{percent}").as_str(),
-                "Volume: ",
+                format!("{}: ", if device_id == MONITOR_ID { "Monitor" } else { "Keyboard" }).as_str(),
             ],
         )?;
 
