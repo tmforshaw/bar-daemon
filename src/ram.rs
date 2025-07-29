@@ -35,7 +35,8 @@ pub enum RamItem {
 pub struct Ram;
 
 impl Ram {
-    pub fn get() -> Result<(u64, u64, u64), DaemonError> {
+    fn get() -> Result<(u64, u64, u64), DaemonError> {
+        // Trim and split the output, getting to the numerical values
         let output_split = Self::get_output_split()?;
 
         let total = Self::get_total_from_split(output_split.iter())?;
@@ -47,13 +48,15 @@ impl Ram {
     }
 
     fn get_output_split() -> Result<Vec<String>, DaemonError> {
+        // Parse the output into lines
         let output = command::run("free", &["-b"])?;
         let output_lines = output.lines();
 
+        // Choose the second line, and split based on whitespace
         Ok(output_lines
             .clone()
             .nth(1)
-            .ok_or(DaemonError::ParseError(output_lines.collect::<String>()))?
+            .ok_or_else(|| DaemonError::ParseError(output_lines.collect::<String>()))?
             .trim_start_matches("Mem:")
             .split_whitespace()
             .map(ToString::to_string)
@@ -61,14 +64,18 @@ impl Ram {
     }
 
     fn get_total_from_split(mut output_split: Iter<String>) -> Result<u64, DaemonError> {
+        // Get the total bytes from the spllit, parsing into u64
         output_split
             .next()
-            .ok_or(DaemonError::ParseError(output_split.join(" ")))?
+            .ok_or_else(|| DaemonError::ParseError(output_split.join(" ")))?
             .trim()
             .parse::<u64>()
             .map_err(Into::into)
     }
 
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
     pub fn get_total() -> Result<u64, DaemonError> {
         let output_split = Self::get_output_split()?;
 
@@ -76,14 +83,18 @@ impl Ram {
     }
 
     fn get_used_from_split(mut output_split: Iter<String>) -> Result<u64, DaemonError> {
+        // Get the used bytes from the spllit, parsing into u64
         output_split
             .nth(1)
-            .ok_or(DaemonError::ParseError(output_split.join(" ")))?
+            .ok_or_else(|| DaemonError::ParseError(output_split.join(" ")))?
             .trim()
             .parse::<u64>()
             .map_err(Into::into)
     }
 
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
     pub fn get_used() -> Result<u64, DaemonError> {
         let output_split = Self::get_output_split()?;
 
@@ -94,19 +105,22 @@ impl Ram {
         ((used as f64 * 100.) / total as f64) as u64
     }
 
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
     pub fn get_percent() -> Result<u64, DaemonError> {
-        let output_split = Self::get_output_split()?;
+        let (_, _, percent) = Self::get()?;
 
-        let total = Self::get_total_from_split(output_split.iter())?;
-        let used = Self::get_used_from_split(output_split.iter())?;
-
-        Ok(Self::get_percent_from_used_total(used, total))
+        Ok(percent)
     }
 
+    #[must_use]
     pub fn get_icon() -> String {
         format!("nvidia-ram{ICON_END}")
     }
 
+    /// # Errors
+    /// Returns an error if the requested value could not be parsed
     pub fn get_tuples() -> Result<Vec<(String, String)>, DaemonError> {
         let (total, used, percent) = Self::get()?;
         let icon = Self::get_icon();
@@ -119,7 +133,9 @@ impl Ram {
         ])
     }
 
-    pub fn parse_item(item: DaemonItem, ram_item: RamItem) -> Result<DaemonReply, DaemonError> {
+    /// # Errors
+    /// Returns an error if the requested value could not be parsed
+    pub fn parse_item(item: DaemonItem, ram_item: &RamItem) -> Result<DaemonReply, DaemonError> {
         Ok(
             // Get value
             match ram_item {
@@ -147,7 +163,8 @@ impl Ram {
         )
     }
 
-    pub fn match_get_commands(commands: Option<RamGetCommands>) -> DaemonMessage {
+    #[must_use]
+    pub const fn match_get_commands(commands: &Option<RamGetCommands>) -> DaemonMessage {
         DaemonMessage::Get {
             item: match commands {
                 Some(commands) => match commands {

@@ -43,6 +43,9 @@ fn parse_bool(s: &str) -> Result<bool, String> {
 pub struct Bluetooth;
 
 impl Bluetooth {
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
     pub fn get_state() -> Result<bool, DaemonError> {
         let output = command::run("bluetooth", &[])?;
 
@@ -54,16 +57,22 @@ impl Bluetooth {
             .map_or(Err(DaemonError::ParseError(output)), |state| Ok(state == "on"))
     }
 
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
     pub fn set_state(state: bool) -> Result<(), DaemonError> {
         command::run("bluetooth", &[(if state { "on" } else { "off" }).to_string().as_str()])?;
 
         Ok(())
     }
 
+    #[must_use]
     pub fn get_icon(state: bool) -> String {
         format!("bluetooth-{}", if state { "active" } else { "disabled" })
     }
 
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
     pub fn get_tuples() -> Result<Vec<(String, String)>, DaemonError> {
         let state = Self::get_state()?;
         let icon = Self::get_icon(state);
@@ -74,9 +83,11 @@ impl Bluetooth {
         ])
     }
 
+    /// # Errors
+    /// Returns an error if the requested value could not be parsed
     pub fn parse_item(
         item: DaemonItem,
-        bluetooth_item: BluetoothItem,
+        bluetooth_item: &BluetoothItem,
         value: Option<String>,
     ) -> Result<DaemonReply, DaemonError> {
         Ok(if let Some(value) = value {
@@ -84,19 +95,16 @@ impl Bluetooth {
             let new_state = value.parse::<bool>()?;
 
             // Set value
-            if bluetooth_item == BluetoothItem::State {
-                Self::set_state(new_state)?
-            };
+            if bluetooth_item == &BluetoothItem::State {
+                Self::set_state(new_state)?;
+            }
 
             if prev_state != new_state {
                 // Do a notification
                 Self::notify()?;
             }
 
-            DaemonReply::Value {
-                item,
-                value: value.to_string(),
-            }
+            DaemonReply::Value { item, value }
         } else {
             // Get value
             match bluetooth_item {
@@ -109,7 +117,7 @@ impl Bluetooth {
 
                     DaemonReply::Value {
                         item,
-                        value: Self::get_icon(state).to_string(),
+                        value: Self::get_icon(state),
                     }
                 }
                 BluetoothItem::All => DaemonReply::Tuples {
@@ -120,7 +128,8 @@ impl Bluetooth {
         })
     }
 
-    pub fn match_get_commands(commands: Option<BluetoothGetCommands>) -> DaemonMessage {
+    #[must_use]
+    pub const fn match_get_commands(commands: &Option<BluetoothGetCommands>) -> DaemonMessage {
         DaemonMessage::Get {
             item: match commands {
                 Some(commands) => match commands {
@@ -132,7 +141,8 @@ impl Bluetooth {
         }
     }
 
-    pub fn match_set_commands(commands: BluetoothSetCommands) -> DaemonMessage {
+    #[must_use]
+    pub fn match_set_commands(commands: &BluetoothSetCommands) -> DaemonMessage {
         match commands {
             BluetoothSetCommands::State { value } => DaemonMessage::Set {
                 item: DaemonItem::Bluetooth(BluetoothItem::State),
@@ -141,6 +151,8 @@ impl Bluetooth {
         }
     }
 
+    /// # Errors
+    /// Returns an error if the requested value could not be parsed
     pub fn notify() -> Result<(), DaemonError> {
         let state = Self::get_state()?;
 

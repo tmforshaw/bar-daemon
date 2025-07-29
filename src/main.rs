@@ -1,4 +1,14 @@
-use crate::{battery::Battery, cli::match_cli, error::DaemonError};
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![warn(clippy::unwrap_used)]
+#![warn(clippy::expect_used)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::cast_precision_loss)]
+#![allow(clippy::cast_sign_loss)]
+#![allow(clippy::option_if_let_else)]
+
+use crate::{cli::match_cli, error::DaemonError};
 
 pub mod battery;
 pub mod bluetooth;
@@ -7,6 +17,7 @@ pub mod cli;
 pub mod command;
 pub mod daemon;
 pub mod error;
+pub mod listener;
 pub mod ram;
 pub mod volume;
 
@@ -16,12 +27,8 @@ pub const ICON_EXT: &str = ".svg";
 pub const NOTIFICATION_ID: u32 = 42069;
 pub const NOTIFICATION_TIMEOUT: u32 = 1000;
 
-// TODO Battery and Memory
-
 #[tokio::main]
 async fn main() -> Result<(), DaemonError> {
-    Battery::get()?;
-
     match_cli().await?;
 
     Ok(())

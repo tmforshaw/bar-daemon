@@ -4,8 +4,9 @@ use crate::{
     battery::{Battery, BatteryGetCommands},
     bluetooth::{Bluetooth, BluetoothGetCommands, BluetoothSetCommands},
     brightness::{Brightness, BrightnessGetCommands, BrightnessSetCommands},
-    daemon::{do_daemon, send_daemon_messaage},
+    daemon::{do_daemon, send_daemon_messaage, DaemonItem, DaemonMessage},
     error::DaemonError,
+    listener::listen,
     ram::{Ram, RamGetCommands},
     volume::{Volume, VolumeGetCommands, VolumeSetCommands},
 };
@@ -21,7 +22,7 @@ pub struct Cli {
 pub enum CliCommands {
     Get {
         #[command(subcommand)]
-        commands: GetCommands,
+        commands: Option<GetCommands>,
     },
     Set {
         #[command(subcommand)]
@@ -77,28 +78,41 @@ pub enum GetCommands {
         #[command(subcommand)]
         commands: Option<RamGetCommands>,
     },
+    #[command(alias = "a")]
+    All,
 }
 
+/// # Errors
+/// Returns an error if the command for requested value cannot be spawned
+/// Returns an error if values in the output of the command cannot be parsed
+/// Returns an error if daemon or listener have received an error
 pub async fn match_cli() -> Result<(), DaemonError> {
     let cli = Cli::parse();
 
     let message_to_send = match cli.commands {
-        CliCommands::Get { commands } => match commands {
-            GetCommands::Volume { commands } => Volume::match_get_commands(commands),
-            GetCommands::Brightness { commands } => Brightness::match_get_commands(commands),
-            GetCommands::Bluetooth { commands } => Bluetooth::match_get_commands(commands),
-            GetCommands::Battery { commands } => Battery::match_get_commands(commands),
-            GetCommands::Ram { commands } => Ram::match_get_commands(commands),
-        },
+        CliCommands::Get { commands } => {
+            if let Some(commands) = commands {
+                match commands {
+                    GetCommands::Volume { commands } => Volume::match_get_commands(&commands),
+                    GetCommands::Brightness { commands } => Brightness::match_get_commands(&commands),
+                    GetCommands::Bluetooth { commands } => Bluetooth::match_get_commands(&commands),
+                    GetCommands::Battery { commands } => Battery::match_get_commands(&commands),
+                    GetCommands::Ram { commands } => Ram::match_get_commands(&commands),
+                    GetCommands::All => DaemonMessage::Get { item: DaemonItem::All },
+                }
+            } else {
+                DaemonMessage::Get { item: DaemonItem::All }
+            }
+        }
         CliCommands::Set { commands } => match commands {
             SetCommands::Volume { commands } => Volume::match_set_commands(commands),
             SetCommands::Brightness { commands } => Brightness::match_set_commands(commands),
-            SetCommands::Bluetooth { commands } => Bluetooth::match_set_commands(commands),
+            SetCommands::Bluetooth { commands } => Bluetooth::match_set_commands(&commands),
         },
         CliCommands::Listen => {
-            println!("Listen");
+            listen().await?;
 
-            unreachable!()
+            return Ok(());
         }
         CliCommands::Daemon => {
             do_daemon().await?;

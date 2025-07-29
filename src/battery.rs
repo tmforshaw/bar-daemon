@@ -28,7 +28,7 @@ pub enum BatteryGetCommands {
     Icon,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum BatteryItem {
     State,
     Percent,
@@ -43,11 +43,12 @@ const BAT_NOTIFY_VALUES: &[u32] = &[5, 15, 20, 30];
 pub struct Battery;
 
 impl Battery {
-    // TODO remove pub
-    pub fn get() -> Result<(BatteryState, u32, String), DaemonError> {
+    fn get() -> Result<(BatteryState, u32, String), DaemonError> {
+        // Split the output based on commas
         let output = command::run("acpi", &["-b"])?;
-        let output_split = output.split(",");
+        let output_split = output.split(',');
 
+        // Parse the state, percentage, and time_remaining
         let state = Self::get_state_from_split(output_split.clone())?;
         let percent = Self::get_percent_from_split(output_split.clone())?;
         let time_remaining = Self::get_time_from_split(output_split)?;
@@ -55,10 +56,11 @@ impl Battery {
         Ok((state, percent, time_remaining))
     }
 
-    fn get_state_from_split(mut output_split: std::str::Split<&str>) -> Result<BatteryState, DaemonError> {
+    fn get_state_from_split(mut output_split: std::str::Split<char>) -> Result<BatteryState, DaemonError> {
+        // Get the state from the split and convert it to a BatteryState enum
         match output_split
             .next()
-            .ok_or(DaemonError::ParseError(output_split.collect::<String>()))?
+            .ok_or_else(|| DaemonError::ParseError(output_split.collect::<String>()))?
             .trim_start_matches("Battery 0: ")
         {
             "Fully charged" => Ok(BatteryState::FullyCharged),
@@ -69,49 +71,58 @@ impl Battery {
         }
     }
 
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
     pub fn get_state() -> Result<BatteryState, DaemonError> {
         let output = command::run("acpi", &["-b"])?;
-        let output_split = output.split(",");
+        let output_split = output.split(',');
 
         Self::get_state_from_split(output_split)
     }
 
-    fn get_percent_from_split(mut output_split: std::str::Split<&str>) -> Result<u32, DaemonError> {
+    fn get_percent_from_split(mut output_split: std::str::Split<char>) -> Result<u32, DaemonError> {
+        // Parse the percentage from split and convert to u32
         Ok(output_split
             .nth(1)
-            .ok_or(DaemonError::ParseError(output_split.collect::<String>()))?
+            .ok_or_else(|| DaemonError::ParseError(output_split.collect::<String>()))?
             .trim()
-            .trim_end_matches("%")
+            .trim_end_matches('%')
             .parse::<u32>()?)
     }
 
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
     pub fn get_percent() -> Result<u32, DaemonError> {
         let output = command::run("acpi", &["-b"])?;
-        let output_split = output.split(",");
+        let output_split = output.split(',');
 
         Self::get_percent_from_split(output_split)
     }
 
-    fn get_time_from_split(mut output_split: std::str::Split<&str>) -> Result<String, DaemonError> {
+    fn get_time_from_split(mut output_split: std::str::Split<char>) -> Result<String, DaemonError> {
         // Return empty string if the time part of the output_split is not present
         let Some(time_string_unsplit) = output_split.nth(2) else {
             return Ok(String::new());
         };
 
+        // Get the time portion of the split
         Ok(time_string_unsplit
             .split_whitespace()
             .nth(0)
-            .ok_or(DaemonError::ParseError(output_split.collect::<String>()))?
+            .ok_or_else(|| DaemonError::ParseError(output_split.collect::<String>()))?
             .to_string())
     }
 
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
     pub fn get_time() -> Result<String, DaemonError> {
         let output = command::run("acpi", &["-b"])?;
-        let output_split = output.split(",");
+        let output_split = output.split(',');
 
         Self::get_time_from_split(output_split)
     }
 
+    #[must_use]
     pub fn get_icon(state: &BatteryState, percent: u32) -> String {
         if state == &BatteryState::NotCharging {
             String::from("battery-missing")
@@ -128,6 +139,9 @@ impl Battery {
         }
     }
 
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
     pub fn get_tuples() -> Result<Vec<(String, String)>, DaemonError> {
         let (state, percent, time) = Self::get()?;
         let icon = Self::get_icon(&state, percent);
@@ -140,7 +154,9 @@ impl Battery {
         ])
     }
 
-    pub fn parse_item(item: DaemonItem, battery_item: BatteryItem) -> Result<DaemonReply, DaemonError> {
+    /// # Errors
+    /// Returns an error if the requested value could not be parsed
+    pub fn parse_item(item: DaemonItem, battery_item: &BatteryItem) -> Result<DaemonReply, DaemonError> {
         Ok(
             // Get value
             match battery_item {
@@ -154,7 +170,7 @@ impl Battery {
                 },
                 BatteryItem::Time => DaemonReply::Value {
                     item,
-                    value: Self::get_time()?.to_string(),
+                    value: Self::get_time()?,
                 },
                 BatteryItem::Icon => {
                     let (state, percent, _) = Self::get()?;
@@ -172,7 +188,8 @@ impl Battery {
         )
     }
 
-    pub fn match_get_commands(commands: Option<BatteryGetCommands>) -> DaemonMessage {
+    #[must_use]
+    pub const fn match_get_commands(commands: &Option<BatteryGetCommands>) -> DaemonMessage {
         DaemonMessage::Get {
             item: match commands {
                 Some(commands) => match commands {
@@ -186,6 +203,8 @@ impl Battery {
         }
     }
 
+    /// # Errors
+    /// Returns an error if the requested value could not be parsed
     pub fn notify(prev_percent: u32) -> Result<(), DaemonError> {
         let (state, current_percent, _) = Self::get()?;
         let icon = Self::get_icon(&state, current_percent);

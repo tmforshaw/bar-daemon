@@ -1,3 +1,5 @@
+use std::cmp;
+
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 
@@ -46,11 +48,14 @@ pub enum BrightnessItem {
 pub struct Brightness;
 
 impl Brightness {
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
     fn get(device_id: &str) -> Result<f32, DaemonError> {
         let output = command::run("brightnessctl", &["-m", "-d", device_id, "i"])?;
 
         // Split the output by commas
-        let output_split = output.split(",").map(ToString::to_string).collect::<Vec<_>>();
+        let output_split = output.split(',').map(ToString::to_string).collect::<Vec<_>>();
 
         // Get the current and maximum brightness values
         let current_brightness = output_split.get(2);
@@ -59,8 +64,8 @@ impl Brightness {
         // Parse the values into integers, then get the floating point percentage
         Ok(
             if let (Some(current_brightness), Some(max_brightness)) = (current_brightness, max_brightness) {
-                let current_value = current_brightness.parse::<u32>()? as f64;
-                let max_value = max_brightness.parse::<u32>()? as f64;
+                let current_value = f64::from(current_brightness.parse::<u32>()?);
+                let max_value = f64::from(max_brightness.parse::<u32>()?);
 
                 ((current_value / max_value) * 100.) as f32
             } else {
@@ -69,18 +74,25 @@ impl Brightness {
         )
     }
 
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
     pub fn get_monitor() -> Result<f32, DaemonError> {
         Self::get(MONITOR_ID)
     }
 
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
     pub fn get_keyboard() -> Result<f32, DaemonError> {
         Self::get(KEYBOARD_ID)
     }
 
-    pub fn get_icon(device_id: &str, percent: f32) -> Result<String, DaemonError> {
+    #[must_use]
+    pub fn get_icon(device_id: &str, percent: f32) -> String {
         let percent = percent as u32;
 
-        Ok(if device_id == MONITOR_ID {
+        if device_id == MONITOR_ID {
             format!(
                 "display-brightness-{}",
                 match percent {
@@ -106,14 +118,14 @@ impl Brightness {
                     format!("-{strength}")
                 }
             )
-        })
+        }
     }
 
-    fn set(device_id: &str, percent_string: String) -> Result<(), DaemonError> {
+    fn set(device_id: &str, percent_string: &str) -> Result<(), DaemonError> {
         // Change the percentage based on the delta percentage
-        let percent = if percent_string.starts_with("+") || percent_string.starts_with("-") {
+        let percent = if percent_string.starts_with('+') || percent_string.starts_with('-') {
             let delta_percent = percent_string.parse::<f64>()?;
-            let current_percent = Self::get(device_id)? as f64;
+            let current_percent = f64::from(Self::get(device_id)?);
 
             // Depending on the first char, add or subtract the percentage
             (current_percent + delta_percent).clamp(0.0, 100.0)
@@ -127,37 +139,45 @@ impl Brightness {
         Ok(())
     }
 
-    pub fn set_monitor(percent: String) -> Result<(), DaemonError> {
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
+    pub fn set_monitor(percent: &str) -> Result<(), DaemonError> {
         let prev_monitor = Self::get_monitor()?;
 
         Self::set(MONITOR_ID, percent)?;
 
         let new_monitor = Self::get_monitor()?;
 
-        if prev_monitor != new_monitor {
+        if prev_monitor.partial_cmp(&new_monitor) == Some(cmp::Ordering::Equal) {
             Self::notify(MONITOR_ID)?;
         }
 
         Ok(())
     }
 
-    pub fn set_keyboard(percent: String) -> Result<(), DaemonError> {
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
+    pub fn set_keyboard(percent: &str) -> Result<(), DaemonError> {
         let prev_keyboard = Self::get_keyboard()?;
 
         Self::set(KEYBOARD_ID, percent)?;
 
         let new_keyboard = Self::get_keyboard()?;
 
-        if prev_keyboard != new_keyboard {
+        if prev_keyboard.partial_cmp(&new_keyboard) == Some(cmp::Ordering::Equal) {
             Self::notify(KEYBOARD_ID)?;
         }
 
         Ok(())
     }
 
+    /// # Errors
+    /// Returns an error if the requested value could not be parsed
     pub fn get_tuples() -> Result<Vec<(String, String)>, DaemonError> {
         let monitor_percent = Self::get_monitor()?;
-        let icon = Self::get_icon(MONITOR_ID, monitor_percent)?;
+        let icon = Self::get_icon(MONITOR_ID, monitor_percent);
 
         Ok(vec![
             ("brightness".to_string(), (monitor_percent as u32).to_string()),
@@ -165,7 +185,8 @@ impl Brightness {
         ])
     }
 
-    pub fn match_get_commands(commands: Option<BrightnessGetCommands>) -> DaemonMessage {
+    #[must_use]
+    pub const fn match_get_commands(commands: &Option<BrightnessGetCommands>) -> DaemonMessage {
         DaemonMessage::Get {
             item: match commands {
                 Some(commands) => match commands {
@@ -178,6 +199,7 @@ impl Brightness {
         }
     }
 
+    #[must_use]
     pub fn match_set_commands(commands: BrightnessSetCommands) -> DaemonMessage {
         match commands {
             BrightnessSetCommands::Monitor { value } => DaemonMessage::Set {
@@ -186,23 +208,25 @@ impl Brightness {
             },
             BrightnessSetCommands::Keyboard { value } => DaemonMessage::Set {
                 item: DaemonItem::Brightness(BrightnessItem::Keyboard),
-                value: value.to_string(),
+                value,
             },
         }
     }
 
+    /// # Errors
+    /// Returns an error if the requested value could not be parsed
     pub fn parse_item(
         item: DaemonItem,
-        brightness_item: BrightnessItem,
+        brightness_item: &BrightnessItem,
         value: Option<String>,
     ) -> Result<DaemonReply, DaemonError> {
         Ok(if let Some(value) = value {
             // Set value
             match brightness_item {
-                BrightnessItem::Monitor => Self::set_monitor(value.clone())?,
-                BrightnessItem::Keyboard => Self::set_keyboard(value.clone())?,
+                BrightnessItem::Monitor => Self::set_monitor(value.as_str())?,
+                BrightnessItem::Keyboard => Self::set_keyboard(value.as_str())?,
                 _ => {}
-            };
+            }
 
             // Notifications are done in the set_* functions
 
@@ -223,7 +247,7 @@ impl Brightness {
 
                     DaemonReply::Value {
                         item,
-                        value: Self::get_icon(MONITOR_ID, percent)?,
+                        value: Self::get_icon(MONITOR_ID, percent),
                     }
                 }
                 BrightnessItem::All => DaemonReply::Tuples {
@@ -234,10 +258,12 @@ impl Brightness {
         })
     }
 
+    /// # Errors
+    /// Returns an error if the requested value could not be parsed
     pub fn notify(device_id: &str) -> Result<(), DaemonError> {
         let percent = Self::get(device_id)?;
 
-        let icon = Self::get_icon(device_id, percent)?;
+        let icon = Self::get_icon(device_id, percent);
 
         command::run(
             "dunstify",

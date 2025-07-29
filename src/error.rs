@@ -25,4 +25,7 @@ pub enum DaemonError {
 
     #[error("String could not parse enough arguments:\n\t{0}")]
     ParseError(String),
+
+    #[error("Serde JSON Serialization Failed:\n\t{0}")]
+    JsonError(#[from] serde_json::Error),
 }

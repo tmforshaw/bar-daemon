@@ -62,6 +62,7 @@ impl Volume {
         Ok((percent, mute))
     }
 
+    #[must_use]
     pub fn get_icon(percent: u32, muted: bool) -> String {
         format!(
             "audio-volume-{}",
@@ -79,29 +80,38 @@ impl Volume {
         )
     }
 
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
     pub fn get_percent() -> Result<u32, DaemonError> {
         let (percent, _) = Self::get()?;
 
         Ok(percent)
     }
 
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
     pub fn get_mute() -> Result<bool, DaemonError> {
         let (_, mute) = Self::get()?;
 
         Ok(mute)
     }
 
-    pub fn set_percent(percent_string: String) -> Result<(), DaemonError> {
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
+    pub fn set_percent(percent_string: &str) -> Result<(), DaemonError> {
         // If the percentage is a change, figure out the true percentage
-        let linear_percent = if percent_string.starts_with("+") || percent_string.starts_with("-") {
+        let linear_percent = if percent_string.starts_with('+') || percent_string.starts_with('-') {
             // Get the value of the percentage
             let delta_percent = percent_string
-                .trim_start_matches("+")
-                .trim_start_matches("-")
+                .trim_start_matches('+')
+                .trim_start_matches('-')
                 .to_string()
                 .parse::<f64>()?;
 
-            let current_percent = Self::get_percent()? as f64;
+            let current_percent = f64::from(Self::get_percent()?);
 
             // Depending on the first char, add or subtract the percentage
             (current_percent
@@ -126,8 +136,11 @@ impl Volume {
         Ok(())
     }
 
-    pub fn set_mute(mute_string: String) -> Result<(), DaemonError> {
-        let mute = mute_string.parse::<bool>()? as u8;
+    /// # Errors
+    /// Returns an error if the command cannot be spawned
+    /// Returns an error if values in the output of the command cannot be parsed
+    pub fn set_mute(mute_string: &str) -> Result<(), DaemonError> {
+        let mute = u8::from(mute_string.parse::<bool>()?);
 
         // Set the mute state
         let _ = command::run("wpctl", &["set-mute", "@DEFAULT_SINK@", format!("{mute}").as_str()])?;
@@ -135,6 +148,8 @@ impl Volume {
         Ok(())
     }
 
+    /// # Errors
+    /// Returns an error if the requested value could not be parsed
     pub fn get_tuples() -> Result<Vec<(String, String)>, DaemonError> {
         let (percent, mute_state) = Self::get()?;
         let icon = Self::get_icon(percent, mute_state);
@@ -146,16 +161,18 @@ impl Volume {
         ])
     }
 
-    pub fn parse_item(item: DaemonItem, volume_item: VolumeItem, value: Option<String>) -> Result<DaemonReply, DaemonError> {
+    /// # Errors
+    /// Returns an error if the requested value could not be parsed
+    pub fn parse_item(item: DaemonItem, volume_item: &VolumeItem, value: Option<String>) -> Result<DaemonReply, DaemonError> {
         Ok(if let Some(value) = value {
             let prev_percent_and_mute = Self::get()?;
 
             // Set value
             match volume_item {
-                VolumeItem::Percent => Self::set_percent(value.clone())?,
-                VolumeItem::Mute => Self::set_mute(value.clone())?,
+                VolumeItem::Percent => Self::set_percent(value.as_str())?,
+                VolumeItem::Mute => Self::set_mute(value.as_str())?,
                 _ => {}
-            };
+            }
 
             let new_percent_and_mute = Self::get()?;
 
@@ -192,7 +209,8 @@ impl Volume {
         })
     }
 
-    pub fn match_get_commands(commands: Option<VolumeGetCommands>) -> DaemonMessage {
+    #[must_use]
+    pub const fn match_get_commands(commands: &Option<VolumeGetCommands>) -> DaemonMessage {
         DaemonMessage::Get {
             item: match commands {
                 Some(commands) => match commands {
@@ -205,6 +223,7 @@ impl Volume {
         }
     }
 
+    #[must_use]
     pub fn match_set_commands(commands: VolumeSetCommands) -> DaemonMessage {
         match commands {
             VolumeSetCommands::Percent { value } => DaemonMessage::Set {
@@ -218,6 +237,8 @@ impl Volume {
         }
     }
 
+    /// # Errors
+    /// Returns an error if the requested value could not be parsed
     pub fn notify() -> Result<(), DaemonError> {
         let (percent, muted) = Self::get()?;
 
