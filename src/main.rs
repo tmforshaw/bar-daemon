@@ -13,6 +13,8 @@ pub const ICON_EXT: &str = "-symbolic.svg";
 pub const NOTIFICATION_ID: u32 = 42069;
 pub const NOTIFICATION_TIMEOUT: u32 = 1000;
 
+// TODO Battery and Memory
+
 #[tokio::main]
 async fn main() -> Result<(), DaemonError> {
     match_cli().await?;
