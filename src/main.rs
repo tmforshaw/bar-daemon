@@ -19,6 +19,7 @@ pub mod daemon;
 pub mod error;
 pub mod fan_profile;
 pub mod listener;
+pub mod log_linear;
 pub mod ram;
 pub mod volume;
 

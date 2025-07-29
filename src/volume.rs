@@ -5,11 +5,11 @@ use crate::{
     command,
     daemon::{DaemonItem, DaemonMessage, DaemonReply},
     error::DaemonError,
+    log_linear::{linear_to_logarithmic, logarithmic_to_linear},
     ICON_EXT, NOTIFICATION_ID, NOTIFICATION_TIMEOUT,
 };
 
 use clap::{ArgAction, Subcommand};
-use log_to_linear::{linear_to_logarithmic, logarithmic_to_linear};
 use serde::{Deserialize, Serialize};
 
 #[derive(Subcommand)]
