@@ -21,8 +21,10 @@ pub mod listener;
 pub mod ram;
 pub mod volume;
 
-pub const ICON_END: &str = "-symbolic";
-pub const ICON_EXT: &str = ".svg";
+// pub const ICON_END: &str = "-symbolic";
+// pub const ICON_EXT: &str = ".svg";
+pub const ICON_END: &str = "";
+pub const ICON_EXT: &str = "";
 
 pub const NOTIFICATION_ID: u32 = 42069;
 pub const NOTIFICATION_TIMEOUT: u32 = 1000;

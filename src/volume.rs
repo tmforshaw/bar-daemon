@@ -1,11 +1,12 @@
 use crate::{
+    cli::parse_bool,
     command,
     daemon::{DaemonItem, DaemonMessage, DaemonReply},
     error::DaemonError,
     ICON_END, ICON_EXT, NOTIFICATION_ID, NOTIFICATION_TIMEOUT,
 };
 
-use clap::Subcommand;
+use clap::{ArgAction, Subcommand};
 use log_to_linear::{linear_to_logarithmic, logarithmic_to_linear};
 use serde::{Deserialize, Serialize};
 
@@ -28,8 +29,8 @@ pub enum VolumeSetCommands {
     },
     #[command(alias = "m")]
     Mute {
-        #[arg()]
-        value: bool,
+        #[arg(action = ArgAction::Set, value_parser = parse_bool)]
+        value: Option<bool>,
     },
 }
 
@@ -140,10 +141,14 @@ impl Volume {
     /// Returns an error if the command cannot be spawned
     /// Returns an error if values in the output of the command cannot be parsed
     pub fn set_mute(mute_string: &str) -> Result<(), DaemonError> {
-        let mute = u8::from(mute_string.parse::<bool>()?);
+        let mute = if mute_string == "toggle" {
+            mute_string.to_string()
+        } else {
+            u8::from(mute_string.parse::<bool>()?).to_string()
+        };
 
         // Set the mute state
-        let _ = command::run("wpctl", &["set-mute", "@DEFAULT_SINK@", format!("{mute}").as_str()])?;
+        let _ = command::run("wpctl", &["set-mute", "@DEFAULT_SINK@", mute.as_str()])?;
 
         Ok(())
     }
@@ -167,6 +172,8 @@ impl Volume {
         Ok(if let Some(value) = value {
             let prev_percent_and_mute = Self::get()?;
 
+            println!("{prev_percent_and_mute:?}");
+
             // Set value
             match volume_item {
                 VolumeItem::Percent => Self::set_percent(value.as_str())?,
@@ -175,6 +182,7 @@ impl Volume {
             }
 
             let new_percent_and_mute = Self::get()?;
+            println!("{new_percent_and_mute:?}");
 
             if prev_percent_and_mute != new_percent_and_mute {
                 // Do a notification
@@ -232,7 +240,7 @@ impl Volume {
             },
             VolumeSetCommands::Mute { value } => DaemonMessage::Set {
                 item: DaemonItem::Volume(VolumeItem::Mute),
-                value: value.to_string(),
+                value: value.map_or("toggle".to_string(), |value| value.to_string()),
             },
         }
     }

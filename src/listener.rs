@@ -38,8 +38,6 @@ pub async fn listen() -> Result<(), DaemonError> {
     let reader = BufReader::new(stream);
     let mut lines = reader.lines();
 
-    println!("Client listening...");
-
     while let Ok(Some(line)) = lines.next_line().await {
         println!("{line}");
     }

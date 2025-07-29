@@ -180,7 +180,7 @@ impl Brightness {
         let icon = Self::get_icon(MONITOR_ID, monitor_percent);
 
         Ok(vec![
-            ("brightness".to_string(), (monitor_percent as u32).to_string()),
+            ("monitor_percent".to_string(), (monitor_percent as u32).to_string()),
             ("icon".to_string(), format!("{icon}{ICON_EXT}")),
         ])
     }

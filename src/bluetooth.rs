@@ -2,6 +2,7 @@ use clap::{ArgAction, Subcommand};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    cli::parse_bool,
     command,
     daemon::{DaemonItem, DaemonMessage, DaemonReply},
     error::DaemonError,
@@ -30,14 +31,6 @@ pub enum BluetoothItem {
     State,
     Icon,
     All,
-}
-
-fn parse_bool(s: &str) -> Result<bool, String> {
-    match s.to_lowercase().as_str() {
-        "true" | "1" => Ok(true),
-        "false" | "0" => Ok(false),
-        other => Err(format!("Invalid value '{other}' for boolean. Use true/false or 1/0.")),
-    }
 }
 
 pub struct Bluetooth;

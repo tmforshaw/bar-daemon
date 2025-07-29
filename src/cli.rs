@@ -126,3 +126,13 @@ pub async fn match_cli() -> Result<(), DaemonError> {
 
     Ok(())
 }
+
+/// # Errors
+/// Returns an error if the bool was not in the correct format
+pub fn parse_bool(s: &str) -> Result<bool, String> {
+    match s.to_lowercase().as_str() {
+        "true" | "1" => Ok(true),
+        "false" | "0" => Ok(false),
+        other => Err(format!("Invalid value '{other}' for boolean. Use true/false or 1/0.")),
+    }
+}
