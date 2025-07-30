@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{UnixListener, UnixStream},
-    sync::Mutex,
+    sync::{mpsc, Mutex},
 };
 use uuid::Uuid;
 
@@ -14,9 +14,11 @@ use crate::{
     brightness::{Brightness, BrightnessItem},
     error::DaemonError,
     fan_profile::{FanProfile, FanProfileItem},
-    listener::{handle_clients, Client, SharedClients},
+    listener::{handle_clients, Client, ClientMessage, SharedClients},
     ram::{Ram, RamItem},
+    tuples::get_all_tuples,
     volume::{Volume, VolumeItem},
+    POLLING_RATE,
 };
 
 pub const SOCKET_PATH: &str = "/tmp/bar_daemon.sock";
@@ -69,20 +71,48 @@ pub async fn do_daemon() -> Result<(), DaemonError> {
     // Create new UnixListener at SOCKET_PATH
     let listener = UnixListener::bind(SOCKET_PATH)?;
 
+    // Enable back and forth communication from each socket handler and the client handler
+    let (clients_tx, mut clients_rx) = mpsc::unbounded_channel::<ClientMessage>();
+
     // Remember listener clients to broadcast to
     let clients: SharedClients = Arc::new(Mutex::new(HashMap::new()));
 
     // Spawn a task which handles listener clients
     let clients_clone = clients.clone();
-    tokio::spawn(async move { handle_clients(clients_clone).await });
+    tokio::spawn(async move { handle_clients(clients_clone, &mut clients_rx).await });
+
+    // Create a task which polls the state of certain values
+    let clients_clone = clients.clone();
+    let clients_tx_clone = clients_tx.clone();
+    tokio::spawn(async move {
+        loop {
+            let clients_empty = clients_clone.lock().await.is_empty();
+
+            // Only poll the values when there are listener clients
+            if !clients_empty {
+                clients_tx_clone
+                    .send(ClientMessage::UpdateBattery)
+                    .unwrap_or_else(|e| eprintln!("{}", Into::<DaemonError>::into(e)));
+
+                clients_tx_clone
+                    .send(ClientMessage::UpdateRam)
+                    .unwrap_or_else(|e| eprintln!("{}", Into::<DaemonError>::into(e)));
+            }
+
+            // Set the polling rate
+            tokio::time::sleep(tokio::time::Duration::from_millis(POLLING_RATE)).await;
+        }
+    });
 
     // Handle sockets
     loop {
         let (stream, _) = listener.accept().await?;
 
+        let clients_tx_clone = clients_tx.clone();
+
         // Spawn a task which handles this socket
         let clients_clone = clients.clone();
-        tokio::spawn(async move { handle_socket(stream, clients_clone).await });
+        tokio::spawn(async move { handle_socket(stream, clients_clone, clients_tx_clone).await });
     }
 }
 
@@ -91,7 +121,11 @@ pub async fn do_daemon() -> Result<(), DaemonError> {
 /// Returns an error if ``DaemonMessage`` could not be created from bytes
 /// Returns an error if requested value cannot be found or parsed
 /// Returns an error if socket could not be wrote to
-pub async fn handle_socket(mut stream: UnixStream, clients: SharedClients) -> Result<(), DaemonError> {
+pub async fn handle_socket(
+    mut stream: UnixStream,
+    clients: SharedClients,
+    clients_tx: mpsc::UnboundedSender<ClientMessage>,
+) -> Result<(), DaemonError> {
     let mut buf = [0; BUFFER_SIZE];
     loop {
         let n = match stream.read(&mut buf).await? {
@@ -103,7 +137,20 @@ pub async fn handle_socket(mut stream: UnixStream, clients: SharedClients) -> Re
         let message: DaemonMessage = postcard::from_bytes(&buf[..n])?;
 
         let reply = match message {
-            DaemonMessage::Set { item, value } => match_set_command(item.clone(), value.clone())?,
+            DaemonMessage::Set { item, value } => {
+                // Broadcast which value has been updated
+                clients_tx.send(match item {
+                    DaemonItem::Volume(_) => ClientMessage::UpdateVolume,
+                    DaemonItem::Brightness(_) => ClientMessage::UpdateBrightness,
+                    DaemonItem::Bluetooth(_) => ClientMessage::UpdateBluetooth,
+                    DaemonItem::Battery(_) => ClientMessage::UpdateBattery,
+                    DaemonItem::Ram(_) => ClientMessage::UpdateRam,
+                    DaemonItem::FanProfile(_) => ClientMessage::UpdateFanProfile,
+                    DaemonItem::All => ClientMessage::UpdateAll,
+                })?;
+
+                match_set_command(item.clone(), value.clone())?
+            }
             DaemonMessage::Get { item } => match_get_command(item.clone()).await?,
             DaemonMessage::Listen => {
                 // Add the client writer and their uuid to clients
@@ -140,11 +187,6 @@ pub async fn send_daemon_messaage(message: DaemonMessage) -> Result<DaemonReply,
     Ok(postcard::from_bytes(&buf[..n])?)
 }
 
-// // TODO
-// pub async fn shutdown_daemon() {
-//     let _ = std::fs::remove_file(SOCKET_PATH);
-// }
-
 /// # Errors
 /// Returns an error if the requested value could not be parsed
 pub fn match_set_command(item: DaemonItem, value: String) -> Result<DaemonReply, DaemonError> {
@@ -169,24 +211,10 @@ pub async fn match_get_command(item: DaemonItem) -> Result<DaemonReply, DaemonEr
         DaemonItem::Battery(battery_item) => Battery::parse_item(item.clone(), &battery_item)?,
         DaemonItem::Ram(ram_item) => Ram::parse_item(item.clone(), &ram_item)?,
         DaemonItem::FanProfile(fan_profile_item) => FanProfile::parse_item(item.clone(), &fan_profile_item, None)?,
-
         DaemonItem::All => DaemonReply::AllTuples {
             tuples: get_all_tuples().await?,
         },
     };
 
     Ok(message)
-}
-
-/// # Errors
-/// Returns an error if the requested value could not be parsed
-pub async fn get_all_tuples() -> Result<Vec<(String, Vec<(String, String)>)>, DaemonError> {
-    Ok(vec![
-        ("volume".to_string(), Volume::get_tuples()?),
-        ("brightness".to_string(), Brightness::get_tuples()?),
-        ("bluetooth".to_string(), Bluetooth::get_tuples()?),
-        ("battery".to_string(), Battery::get_tuples()?),
-        ("ram".to_string(), Ram::get_tuples()?),
-        ("fan_profile".to_string(), FanProfile::get_tuples()?),
-    ])
 }

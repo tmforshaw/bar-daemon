@@ -7,6 +7,7 @@
 #![allow(clippy::cast_precision_loss)]
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::option_if_let_else)]
+#![allow(clippy::similar_names)]
 
 use crate::{cli::match_cli, error::DaemonError};
 
@@ -18,9 +19,11 @@ pub mod command;
 pub mod daemon;
 pub mod error;
 pub mod fan_profile;
+pub mod json;
 pub mod listener;
 pub mod log_linear;
 pub mod ram;
+pub mod tuples;
 pub mod volume;
 
 pub const ICON_END: &str = "-symbolic";
@@ -28,6 +31,8 @@ pub const ICON_EXT: &str = ""; // ".svg"
 
 pub const NOTIFICATION_ID: u32 = 42069;
 pub const NOTIFICATION_TIMEOUT: u32 = 1000;
+
+pub const POLLING_RATE: u64 = 2000;
 
 #[tokio::main]
 async fn main() -> Result<(), DaemonError> {

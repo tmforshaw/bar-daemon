@@ -1,4 +1,7 @@
 use thiserror::Error;
+use tokio::sync::mpsc;
+
+use crate::listener::ClientMessage;
 
 #[derive(Error, Debug)]
 pub enum DaemonError {
@@ -29,10 +32,15 @@ pub enum DaemonError {
     #[error("Serde JSON Serialization Failed:\n\t{0}")]
     JsonError(#[from] serde_json::Error),
 
-    // TODO
-    #[error("Serde JSON Serialization Failed:\n\t{0}")]
-    IntErro(#[from] std::num::TryFromIntError),
+    #[error("Mpsc Could Not Send ClientMessage:\n\t{0}")]
+    MpscSendError(#[from] mpsc::error::SendError<ClientMessage>),
+
+    #[error("Could not convert between int types:\n\t{0}")]
+    IntError(#[from] std::num::TryFromIntError),
 
     #[error("Mutex couldn't be locked")]
     MutexLockError,
+
+    #[error("Could not convert usize to TupleName")]
+    TupleNameError,
 }
