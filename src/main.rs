@@ -8,6 +8,7 @@
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::option_if_let_else)]
 #![allow(clippy::similar_names)]
+#![allow(clippy::implicit_hasher)]
 
 use crate::{cli::match_cli, error::DaemonError};
 
@@ -23,6 +24,7 @@ pub mod json;
 pub mod listener;
 pub mod log_linear;
 pub mod ram;
+pub mod shutdown;
 pub mod tuples;
 pub mod volume;
 

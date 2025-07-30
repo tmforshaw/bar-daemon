@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{UnixListener, UnixStream},
-    sync::{mpsc, Mutex},
+    sync::{mpsc, Mutex, Notify},
 };
 use uuid::Uuid;
 
@@ -14,11 +14,11 @@ use crate::{
     brightness::{Brightness, BrightnessItem},
     error::DaemonError,
     fan_profile::{FanProfile, FanProfileItem},
-    listener::{handle_clients, Client, ClientMessage, SharedClients},
+    listener::{handle_clients, poll_values, Client, ClientMessage, SharedClients},
     ram::{Ram, RamItem},
+    shutdown::shutdown_signal,
     tuples::get_all_tuples,
     volume::{Volume, VolumeItem},
-    POLLING_RATE,
 };
 
 pub const SOCKET_PATH: &str = "/tmp/bar_daemon.sock";
@@ -68,6 +68,13 @@ pub async fn do_daemon() -> Result<(), DaemonError> {
         std::fs::remove_file(SOCKET_PATH)?;
     }
 
+    // Create a future which waits for shutdown request
+    let shutdown = shutdown_signal();
+    tokio::pin!(shutdown);
+
+    // Create Notify for broadcasting shutdown to all tasks
+    let notify = Arc::new(Notify::new());
+
     // Create new UnixListener at SOCKET_PATH
     let listener = UnixListener::bind(SOCKET_PATH)?;
 
@@ -79,41 +86,55 @@ pub async fn do_daemon() -> Result<(), DaemonError> {
 
     // Spawn a task which handles listener clients
     let clients_clone = clients.clone();
-    tokio::spawn(async move { handle_clients(clients_clone, &mut clients_rx).await });
+    let notify_clone = notify.clone();
+    tokio::spawn(async move { handle_clients(clients_clone, &mut clients_rx, notify_clone).await });
 
     // Create a task which polls the state of certain values
     let clients_clone = clients.clone();
     let clients_tx_clone = clients_tx.clone();
+
+    let notify_clone = notify.clone();
     tokio::spawn(async move {
         loop {
-            let clients_empty = clients_clone.lock().await.is_empty();
-
-            // Only poll the values when there are listener clients
-            if !clients_empty {
-                clients_tx_clone
-                    .send(ClientMessage::UpdateBattery)
-                    .unwrap_or_else(|e| eprintln!("{}", Into::<DaemonError>::into(e)));
-
-                clients_tx_clone
-                    .send(ClientMessage::UpdateRam)
-                    .unwrap_or_else(|e| eprintln!("{}", Into::<DaemonError>::into(e)));
+            tokio::select! {
+                () = poll_values(clients_clone.clone(), clients_tx_clone.clone()) => {}
+                () = notify_clone.notified() => {
+                    println!("Shutdown notified, cleaning up poll loop");
+                }
             }
-
-            // Set the polling rate
-            tokio::time::sleep(tokio::time::Duration::from_millis(POLLING_RATE)).await;
         }
     });
 
     // Handle sockets
     loop {
-        let (stream, _) = listener.accept().await?;
+        tokio::select! {
+            () = &mut shutdown => {
+                println!("Shutdown signal received, stopping connection accept loop");
 
-        let clients_tx_clone = clients_tx.clone();
+                notify.notify_waiters();
 
-        // Spawn a task which handles this socket
-        let clients_clone = clients.clone();
-        tokio::spawn(async move { handle_socket(stream, clients_clone, clients_tx_clone).await });
+                break;
+            },
+            accept_result = listener.accept() => {
+                let (stream, _) = accept_result?;
+
+                // Spawn a task which handles this socket
+                let clients_clone = clients.clone();
+                let clients_tx_clone = clients_tx.clone();
+                let notify_clone = notify.clone();
+                tokio::spawn(async move { handle_socket(stream, clients_clone, clients_tx_clone, notify_clone).await });
+            }
+        }
     }
+
+    // Remove socket file after shutdown
+    if Path::new(SOCKET_PATH).exists() {
+        std::fs::remove_file(SOCKET_PATH)?;
+    }
+
+    println!("Daemon shutdown cleanly");
+
+    Ok(())
 }
 
 /// # Errors
@@ -125,45 +146,56 @@ pub async fn handle_socket(
     mut stream: UnixStream,
     clients: SharedClients,
     clients_tx: mpsc::UnboundedSender<ClientMessage>,
+    notify: Arc<Notify>,
 ) -> Result<(), DaemonError> {
     let mut buf = [0; BUFFER_SIZE];
     loop {
-        let n = match stream.read(&mut buf).await? {
-            // Stream closed
-            0 => break,
-            n => n,
-        };
+        tokio::select! {
+            read_result = stream.read(&mut buf) => {
+                let n = match read_result? {
+                    // Stream closed
+                    0 => break,
+                    n => n,
+                };
 
-        let message: DaemonMessage = postcard::from_bytes(&buf[..n])?;
+                let message: DaemonMessage = postcard::from_bytes(&buf[..n])?;
 
-        let reply = match message {
-            DaemonMessage::Set { item, value } => {
-                // Broadcast which value has been updated
-                clients_tx.send(match item {
-                    DaemonItem::Volume(_) => ClientMessage::UpdateVolume,
-                    DaemonItem::Brightness(_) => ClientMessage::UpdateBrightness,
-                    DaemonItem::Bluetooth(_) => ClientMessage::UpdateBluetooth,
-                    DaemonItem::Battery(_) => ClientMessage::UpdateBattery,
-                    DaemonItem::Ram(_) => ClientMessage::UpdateRam,
-                    DaemonItem::FanProfile(_) => ClientMessage::UpdateFanProfile,
-                    DaemonItem::All => ClientMessage::UpdateAll,
-                })?;
+                let reply = match message {
+                    DaemonMessage::Set { item, value } => {
+                        // Broadcast which value has been updated
+                        clients_tx.send(match item {
+                            DaemonItem::Volume(_) => ClientMessage::UpdateVolume,
+                            DaemonItem::Brightness(_) => ClientMessage::UpdateBrightness,
+                            DaemonItem::Bluetooth(_) => ClientMessage::UpdateBluetooth,
+                            DaemonItem::Battery(_) => ClientMessage::UpdateBattery,
+                            DaemonItem::Ram(_) => ClientMessage::UpdateRam,
+                            DaemonItem::FanProfile(_) => ClientMessage::UpdateFanProfile,
+                            DaemonItem::All => ClientMessage::UpdateAll,
+                        })?;
 
-                match_set_command(item.clone(), value.clone())?
-            }
-            DaemonMessage::Get { item } => match_get_command(item.clone()).await?,
-            DaemonMessage::Listen => {
-                // Add the client writer and their uuid to clients
-                let client_id = Uuid::new_v4();
-                clients.lock().await.insert(client_id, Client { id: client_id, stream });
+                        match_set_command(item.clone(), value.clone())?
+                    }
+                    DaemonMessage::Get { item } => match_get_command(item.clone()).await?,
+                    DaemonMessage::Listen => {
+                        // Add the client writer and their uuid to clients
+                        let client_id = Uuid::new_v4();
+                        clients.lock().await.insert(client_id, Client { id: client_id, stream });
 
+                        return Ok(());
+                    }
+                };
+
+                // Send the reply back
+                stream.write_all(&postcard::to_stdvec(&reply)?).await?;
+            },
+            () = notify.notified() => {
+                println!("Socket handler received shutdown notification");
                 break;
             }
-        };
-
-        // Send the reply back
-        stream.write_all(&postcard::to_stdvec(&reply)?).await?;
+        }
     }
+
+    println!("Socket handler shutdown successfuly");
 
     Ok(())
 }

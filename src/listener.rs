@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::Path, sync::Arc};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::UnixStream,
-    sync::{mpsc, Mutex},
+    sync::{mpsc, Mutex, Notify},
 };
 use uuid::Uuid;
 
@@ -12,6 +12,7 @@ use crate::{
     error::DaemonError,
     json::tuples_to_json,
     tuples::{get_all_tuples, tuple_name_to_tuples, TupleName, TUPLE_NAMES},
+    POLLING_RATE,
 };
 
 pub struct Client {
@@ -72,58 +73,89 @@ pub type SharedClients = Arc<Mutex<HashMap<Uuid, Client>>>;
 pub async fn handle_clients(
     clients: SharedClients,
     clients_rx: &mut mpsc::UnboundedReceiver<ClientMessage>,
+    notify: Arc<Notify>,
 ) -> Result<(), DaemonError> {
     let mut tuples = Mutex::new(get_all_tuples().await?);
 
     loop {
-        // Only show messages when the update has been asked for
-        let Some(client_message) = clients_rx.recv().await else {
-            continue;
-        };
-
-        let clients_empty = clients.lock().await.is_empty();
-
-        if !clients_empty {
-            if matches!(client_message, ClientMessage::UpdateAll) {
-                // Get the tuples for all values
-                tuples = Mutex::new(get_all_tuples().await?);
-            } else {
-                // Get the TupleName for this message
-                let tuple_name = match client_message {
-                    ClientMessage::UpdateVolume => TupleName::Volume,
-                    ClientMessage::UpdateBrightness => TupleName::Brightness,
-                    ClientMessage::UpdateBluetooth => TupleName::Bluetooth,
-                    ClientMessage::UpdateBattery => TupleName::Battery,
-                    ClientMessage::UpdateRam => TupleName::Ram,
-                    ClientMessage::UpdateFanProfile => TupleName::FanProfile,
-                    ClientMessage::UpdateAll => unreachable!(),
+        tokio::select! {
+            client_message_result = clients_rx.recv() => {
+                // Only show messages when the update has been asked for
+                let Some(client_message) = client_message_result else {
+                    continue;
                 };
 
-                // Update the inner of the Mutex
-                let mut tuples = tuples.lock().await;
-                (*tuples)[tuple_name as usize] = (
-                    TUPLE_NAMES[tuple_name as usize].to_string(),
-                    tuple_name_to_tuples(&tuple_name)?,
-                );
-            }
+                let clients_empty = clients.lock().await.is_empty();
 
-            let mut to_remove = vec![];
+                if !clients_empty {
+                    if matches!(client_message, ClientMessage::UpdateAll) {
+                        // Get the tuples for all values
+                        tuples = Mutex::new(get_all_tuples().await?);
+                    } else {
+                        // Get the TupleName for this message
+                        let tuple_name = match client_message {
+                            ClientMessage::UpdateVolume => TupleName::Volume,
+                            ClientMessage::UpdateBrightness => TupleName::Brightness,
+                            ClientMessage::UpdateBluetooth => TupleName::Bluetooth,
+                            ClientMessage::UpdateBattery => TupleName::Battery,
+                            ClientMessage::UpdateRam => TupleName::Ram,
+                            ClientMessage::UpdateFanProfile => TupleName::FanProfile,
+                            ClientMessage::UpdateAll => unreachable!(),
+                        };
 
-            let json = tuples_to_json(tuples.lock().await.clone())? + "\n";
+                        // Update the inner of the Mutex
+                        let mut tuples = tuples.lock().await;
+                        (*tuples)[tuple_name as usize] = (
+                            TUPLE_NAMES[tuple_name as usize].to_string(),
+                            tuple_name_to_tuples(&tuple_name)?,
+                        );
+                    }
 
-            // Broadcast to each client
-            for (id, client) in clients.lock().await.iter_mut() {
-                if let Err(e) = client.stream.try_write(json.as_bytes()) {
-                    eprintln!("Write failed for {id}: {e}");
-                    to_remove.push(*id);
+                    let mut to_remove = vec![];
+
+                    let json = tuples_to_json(tuples.lock().await.clone())? + "\n";
+
+                    // Broadcast to each client
+                    for (id, client) in clients.lock().await.iter_mut() {
+                        if let Err(e) = client.stream.try_write(json.as_bytes()) {
+                            eprintln!("Write failed for {id}: {e}");
+                            to_remove.push(*id);
+                        }
+                    }
+
+                    // Remove dead clients
+                    for id in to_remove {
+                        clients.lock().await.remove(&id);
+                        println!("Client {id} removed");
+                    }
                 }
             }
-
-            // Remove dead clients
-            for id in to_remove {
-                clients.lock().await.remove(&id);
-                println!("Client {id} removed");
+            () = notify.notified() => {
+                println!("Client handler received shutdown notification");
+                break;
             }
         }
     }
+
+    println!("Client handler shutdown successfuly");
+
+    Ok(())
+}
+
+pub async fn poll_values(clients: Arc<Mutex<HashMap<Uuid, Client>>>, clients_tx: mpsc::UnboundedSender<ClientMessage>) {
+    let clients_empty = clients.lock().await.is_empty();
+
+    // Only poll the values when there are listener clients
+    if !clients_empty {
+        clients_tx
+            .send(ClientMessage::UpdateBattery)
+            .unwrap_or_else(|e| eprintln!("{}", Into::<DaemonError>::into(e)));
+
+        clients_tx
+            .send(ClientMessage::UpdateRam)
+            .unwrap_or_else(|e| eprintln!("{}", Into::<DaemonError>::into(e)));
+    }
+
+    // Set the polling rate
+    tokio::time::sleep(tokio::time::Duration::from_millis(POLLING_RATE)).await;
 }

@@ -148,7 +148,8 @@ pub async fn match_cli() -> Result<(), DaemonError> {
         CliCommands::Daemon => {
             do_daemon().await?;
 
-            unreachable!()
+            // After the daemon has shutdown
+            return Ok(());
         }
     };
 
