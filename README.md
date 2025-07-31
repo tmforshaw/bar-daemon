@@ -1,9 +1,11 @@
-# `bar_daemon` -- A Daemon For Status Bars
+# `bar_daemon` -- A Daemon For Linux Status Bars
 A daemon that can be queried for specific values, and set values (With notifications for some), can also run as a listener cwhich will be sent all of the values in JSON format whenever a value is updated (Certain values are polled, e.g battery, ram).
 
 Notifies on the change of values, and can be queried for the icon of a particular entry, given its type and value.
 
 Intended for use with a status bar, reduces the amount of values which need to be polled for.
+
+Makes use of `tokio::UnixStream` which means that this program only works on Linux.
 
 
 ## Usage
