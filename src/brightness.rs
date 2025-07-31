@@ -10,8 +10,8 @@ use crate::{
     ICON_END, ICON_EXT, NOTIFICATION_ID, NOTIFICATION_TIMEOUT,
 };
 
-const MONITOR_ID: &str = "nvidia_wmi_ec_backlight";
-const KEYBOARD_ID: &str = "asus::kbd_backlight";
+pub const MONITOR_ID: &str = "nvidia_wmi_ec_backlight";
+pub const KEYBOARD_ID: &str = "asus::kbd_backlight";
 
 #[derive(Subcommand)]
 pub enum BrightnessGetCommands {

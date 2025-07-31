@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::{
     battery::{Battery, BatteryItem},
     bluetooth::{Bluetooth, BluetoothItem},
-    brightness::{Brightness, BrightnessItem},
+    brightness::{Brightness, BrightnessItem, KEYBOARD_ID, MONITOR_ID},
     error::DaemonError,
     fan_profile::{FanProfile, FanProfileItem},
     listener::{handle_clients, poll_values, Client, ClientMessage, SharedClients},
@@ -180,12 +180,34 @@ pub async fn handle_socket(
                     DaemonMessage::Update {item} => {
                         // Broadcast which value has been updated
                         clients_tx.send(match item {
-                            DaemonItem::Volume(_) => ClientMessage::UpdateVolume,
-                            DaemonItem::Brightness(_) => ClientMessage::UpdateBrightness,
-                            DaemonItem::Bluetooth(_) => ClientMessage::UpdateBluetooth,
-                            DaemonItem::Battery(_) => ClientMessage::UpdateBattery,
+                            DaemonItem::Volume(_) => {
+                                Volume::notify()?;
+
+                                ClientMessage::UpdateVolume
+                            },
+                            DaemonItem::Brightness(_) => {
+                                // TODO
+                                Brightness::notify(MONITOR_ID)?;
+                                Brightness::notify(KEYBOARD_ID)?;
+
+                                ClientMessage::UpdateBrightness
+                            },
+                            DaemonItem::Bluetooth(_) => {
+                                Bluetooth::notify()?;
+
+                                ClientMessage::UpdateBluetooth
+                            },
+                            DaemonItem::Battery(_) => {
+                                Battery::notify(u32::MAX)?;
+
+                                ClientMessage::UpdateBattery
+                            },
                             DaemonItem::Ram(_) => ClientMessage::UpdateRam,
-                            DaemonItem::FanProfile(_) => ClientMessage::UpdateFanProfile,
+                            DaemonItem::FanProfile(_) => {
+                                FanProfile::notify()?;
+
+                                ClientMessage::UpdateFanProfile
+                            },
                             DaemonItem::All => ClientMessage::UpdateAll,
                         })?;
 
