@@ -36,6 +36,14 @@ pub enum VolumeSetCommands {
     },
 }
 
+#[derive(Subcommand)]
+pub enum VolumeUpdateCommands {
+    #[command(alias = "per", alias = "p")]
+    Percent,
+    #[command(alias = "m")]
+    Mute,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum VolumeItem {
     Percent,
@@ -266,6 +274,18 @@ impl Volume {
             VolumeSetCommands::Mute { value } => DaemonMessage::Set {
                 item: DaemonItem::Volume(VolumeItem::Mute),
                 value: value.map_or("toggle".to_string(), |value| value.to_string()),
+            },
+        }
+    }
+
+    #[must_use]
+    pub const fn match_update_commands(commands: &VolumeUpdateCommands) -> DaemonMessage {
+        match commands {
+            VolumeUpdateCommands::Percent => DaemonMessage::Update {
+                item: DaemonItem::Volume(VolumeItem::Percent),
+            },
+            VolumeUpdateCommands::Mute => DaemonMessage::Update {
+                item: DaemonItem::Volume(VolumeItem::Mute),
             },
         }
     }

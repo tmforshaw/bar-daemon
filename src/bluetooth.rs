@@ -26,6 +26,12 @@ pub enum BluetoothSetCommands {
     },
 }
 
+#[derive(Subcommand)]
+pub enum BluetoothUpdateCommands {
+    #[command(alias = "s")]
+    State,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub enum BluetoothItem {
     State,
@@ -153,6 +159,15 @@ impl Bluetooth {
             BluetoothSetCommands::State { value } => DaemonMessage::Set {
                 item: DaemonItem::Bluetooth(BluetoothItem::State),
                 value: value.map_or("toggle".to_string(), |value| value.to_string()),
+            },
+        }
+    }
+
+    #[must_use]
+    pub const fn match_update_commands(commands: &BluetoothUpdateCommands) -> DaemonMessage {
+        match commands {
+            BluetoothUpdateCommands::State => DaemonMessage::Update {
+                item: DaemonItem::Bluetooth(BluetoothItem::State),
             },
         }
     }

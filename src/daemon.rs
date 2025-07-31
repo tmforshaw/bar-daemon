@@ -28,6 +28,7 @@ pub const BUFFER_SIZE: usize = 1024;
 pub enum DaemonMessage {
     Set { item: DaemonItem, value: String },
     Get { item: DaemonItem },
+    Update { item: DaemonItem },
     Listen,
 }
 
@@ -161,7 +162,7 @@ pub async fn handle_socket(
                 let message: DaemonMessage = postcard::from_bytes(&buf[..n])?;
 
                 let reply = match message {
-                    DaemonMessage::Set { item, value } => {
+                    DaemonMessage::Set { item, value }=> {
                         // Broadcast which value has been updated
                         clients_tx.send(match item {
                             DaemonItem::Volume(_) => ClientMessage::UpdateVolume,
@@ -176,6 +177,20 @@ pub async fn handle_socket(
                         match_set_command(item.clone(), value.clone())?
                     }
                     DaemonMessage::Get { item } => match_get_command(item.clone()).await?,
+                    DaemonMessage::Update {item} => {
+                        // Broadcast which value has been updated
+                        clients_tx.send(match item {
+                            DaemonItem::Volume(_) => ClientMessage::UpdateVolume,
+                            DaemonItem::Brightness(_) => ClientMessage::UpdateBrightness,
+                            DaemonItem::Bluetooth(_) => ClientMessage::UpdateBluetooth,
+                            DaemonItem::Battery(_) => ClientMessage::UpdateBattery,
+                            DaemonItem::Ram(_) => ClientMessage::UpdateRam,
+                            DaemonItem::FanProfile(_) => ClientMessage::UpdateFanProfile,
+                            DaemonItem::All => ClientMessage::UpdateAll,
+                        })?;
+
+                        match_get_command(item.clone()).await?
+                    }
                     DaemonMessage::Listen => {
                         // Add the client writer and their uuid to clients
                         let client_id = Uuid::new_v4();

@@ -34,6 +34,12 @@ pub enum FanProfileSetCommands {
     },
 }
 
+#[derive(Subcommand)]
+pub enum FanProfileUpdateCommands {
+    #[command(alias = "prof", alias = "p")]
+    Profile,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum FanProfileItem {
     Profile,
@@ -169,6 +175,15 @@ impl FanProfile {
             FanProfileSetCommands::Profile { value } => DaemonMessage::Set {
                 item: DaemonItem::FanProfile(FanProfileItem::Profile),
                 value,
+            },
+        }
+    }
+
+    #[must_use]
+    pub const fn match_update_commands(commands: &FanProfileUpdateCommands) -> DaemonMessage {
+        match commands {
+            FanProfileUpdateCommands::Profile => DaemonMessage::Update {
+                item: DaemonItem::FanProfile(FanProfileItem::Profile),
             },
         }
     }
